@@ -6,17 +6,18 @@ import { JourneyDetails } from './components/JourneyDetails';
 import { StreamingProgress } from './components/StreamingProgress';
 import { updateJourney } from './api/journey';
 import { createJourneyStream } from './api/journey-stream';
-import type { Journey, Phase, Context, Artifact, Touchpoint, Connection } from './types/journey';
+import type { Journey, User, Phase, Context, JourneyNode, JourneyEdge, Intersection } from './types/journey';
 
 // 점진적으로 빌드되는 Journey 상태
 interface PartialJourney {
   id?: string;
   title?: string;
+  users: User[];
   phases: Phase[];
   contexts: Context[];
-  artifacts: Artifact[];
-  touchpoints: Touchpoint[];
-  connections: Connection[];
+  nodes: JourneyNode[];
+  edges: JourneyEdge[];
+  intersections: Intersection[];
 }
 
 // 스트리밍 진행 상태
@@ -41,16 +42,17 @@ function App() {
     setError(null);
     setJourney(null);
     setPartialJourney({
+      users: [],
       phases: [],
       contexts: [],
-      artifacts: [],
-      touchpoints: [],
-      connections: [],
+      nodes: [],
+      edges: [],
+      intersections: [],
     });
     setStreamingState({
       isStreaming: true,
       completedSteps: [],
-      currentStep: 'phases',
+      currentStep: 'users',
     });
 
     try {
@@ -61,6 +63,15 @@ function App() {
             id: data.journeyId,
             title: data.title,
           } : null);
+        },
+        
+        onUsers: (users) => {
+          setPartialJourney(prev => prev ? { ...prev, users } : null);
+          setStreamingState(prev => ({
+            ...prev,
+            completedSteps: [...prev.completedSteps, 'users'],
+            currentStep: 'phases',
+          }));
         },
         
         onPhases: (phases) => {
@@ -77,33 +88,33 @@ function App() {
           setStreamingState(prev => ({
             ...prev,
             completedSteps: [...prev.completedSteps, 'contexts'],
-            currentStep: 'artifacts',
+            currentStep: 'nodes',
           }));
         },
         
-        onArtifacts: (artifacts) => {
-          setPartialJourney(prev => prev ? { ...prev, artifacts } : null);
+        onNodes: (nodes) => {
+          setPartialJourney(prev => prev ? { ...prev, nodes } : null);
           setStreamingState(prev => ({
             ...prev,
-            completedSteps: [...prev.completedSteps, 'artifacts'],
-            currentStep: 'touchpoints',
+            completedSteps: [...prev.completedSteps, 'nodes'],
+            currentStep: 'edges',
           }));
         },
         
-        onTouchpoints: (touchpoints) => {
-          setPartialJourney(prev => prev ? { ...prev, touchpoints } : null);
+        onEdges: (edges) => {
+          setPartialJourney(prev => prev ? { ...prev, edges } : null);
           setStreamingState(prev => ({
             ...prev,
-            completedSteps: [...prev.completedSteps, 'touchpoints'],
-            currentStep: 'connections',
+            completedSteps: [...prev.completedSteps, 'edges'],
+            currentStep: 'intersections',
           }));
         },
         
-        onConnections: (connections) => {
-          setPartialJourney(prev => prev ? { ...prev, connections } : null);
+        onIntersections: (intersections) => {
+          setPartialJourney(prev => prev ? { ...prev, intersections } : null);
           setStreamingState(prev => ({
             ...prev,
-            completedSteps: [...prev.completedSteps, 'connections'],
+            completedSteps: [...prev.completedSteps, 'intersections'],
             currentStep: 'complete',
           }));
         },

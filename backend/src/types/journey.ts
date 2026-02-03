@@ -1,94 +1,117 @@
-// Journey Creator 데이터 타입 정의
-// 새로운 용어 체계: Phase (시간) × Context/Artifact (터치포인트)
+// User (행위자) - 작업자, AGV, 시스템 등
+export interface User {
+  id: string;
+  name: string;           // "작업자 A", "AGV-01"
+  type: 'human' | 'robot' | 'system' | 'other';
+  color: string;          // 고유 색상 "#3b82f6"
+  description?: string;   // 역할 설명
+}
 
-// 시간 단계 (가로축)
+// Phase (시간축)
 export interface Phase {
   id: string;
-  name: string;           // 예: "준비", "작업", "점검", "완료"
-  order: number;          // 순서
-  duration?: string;      // 예: "30분", "1시간"
+  name: string;
+  order: number;
+  duration?: string;
 }
 
-// Context: 서비스 경험이 일어나는 물리적 공간/환경 (세로축 기준)
+// Context (공간축/환경)
 export interface Context {
   id: string;
-  name: string;           // 예: "공장 라인", "자재 창고", "휴게실"
-  description?: string;   // 환경 설명
-  order: number;          // 세로축 배치 순서
-  color?: string;         // 시각화용 색상
-}
-
-// Artifact: Context 내 구체적 접점 (Physical Evidence)
-export interface Artifact {
-  id: string;
-  name: string;           // 예: "웨어러블 로봇", "MES 앱", "충전 스테이션"
-  type: 'tangible' | 'intangible';  // 유형/무형
+  name: string;
   description?: string;
+  order: number;
 }
 
-// Touchpoint: 사용자 경험의 핵심 구성 요소
-// Phase(시간) × Context(공간) 교차점에 배치되는 경험 단위
-export interface Touchpoint {
+// Node = User의 특정 시점 상태
+export interface JourneyNode {
   id: string;
-  phaseId: string;        // 속한 Phase (가로축)
-  contextId: string;      // 속한 Context (세로축)
-  artifactId: string;     // 사용되는 Artifact
-  
-  action: string;         // 사용자 행동/경험 설명
-  emotion: 'positive' | 'neutral' | 'negative';  // 감정 상태
-  emotionScore: number;   // -1 ~ 1 (감정 점수)
-  
-  painPoint?: string;     // 불편 사항
-  opportunity?: string;   // 개선 기회
-  
-  position: {
-    x: number;            // Grid X 위치
-    y: number;            // Grid Y 위치
-  };
+  userId: string;         // 어떤 User인지
+  phaseId: string;        // 어느 Phase에
+  contextId: string;      // 어느 Context에
+  action: string;         // 무엇을 하는지
+  emotion: 'positive' | 'neutral' | 'negative';
+  emotionScore: number;   // -1 ~ 1
+  painPoint?: string;
+  opportunity?: string;
+  position?: { x: number; y: number };
 }
 
-// 터치포인트 간 연결 (흐름)
-export interface Connection {
+// Edge = Node 간 이동/전환
+export interface JourneyEdge {
   id: string;
-  fromTouchpointId: string;
-  toTouchpointId: string;
-  label?: string;         // 연결 설명 (예: "이동", "전달", "알림")
+  fromNodeId: string;
+  toNodeId: string;
+  description: string;    // "~를 하기 위해 ~로 이동함"
 }
 
-// 전체 여정 지도
+// 접점 = 여러 User가 만나는 지점
+export interface Intersection {
+  id: string;
+  phaseId: string;
+  contextId: string;
+  nodeIds: string[];      // 만나는 Node들의 ID
+  description?: string;   // 접점에서 일어나는 상호작용
+}
+
+// Journey = 전체 그래프
 export interface Journey {
   id: string;
   title: string;
   description?: string;
-  scenario: string;       // 원본 시나리오 텍스트
-  
-  phases: Phase[];        // 시간 단계들 (가로축)
-  contexts: Context[];    // 공간/환경들 (세로축)
-  artifacts: Artifact[];  // 접점 요소들
-  touchpoints: Touchpoint[];
-  connections: Connection[];
-  
+  scenario: string;
+  users: User[];
+  phases: Phase[];
+  contexts: Context[];
+  nodes: JourneyNode[];
+  edges: JourneyEdge[];
+  intersections: Intersection[];
   createdAt: string;
   updatedAt: string;
 }
 
-// GPT 추출 결과
-export interface ExtractionResult {
-  phases: Omit<Phase, 'id'>[];
-  contexts: Omit<Context, 'id' | 'color'>[];
-  artifacts: Omit<Artifact, 'id'>[];
-  touchpoints: Omit<Touchpoint, 'id' | 'position'>[];
-  suggestedConnections: { fromIndex: number; toIndex: number; label?: string }[];
-}
-
-// API 요청/응답 타입
+// API 요청 타입
 export interface CreateJourneyRequest {
   scenario: string;
   title?: string;
 }
 
-export interface CreateJourneyResponse {
-  success: boolean;
-  journey?: Journey;
-  error?: string;
+// GPT 추출 결과 타입
+export interface ExtractionResult {
+  users: Array<{
+    name: string;
+    type: string;
+    description: string;
+  }>;
+  phases: Array<{
+    name: string;
+    order: number;
+    duration: string;
+  }>;
+  contexts: Array<{
+    name: string;
+    description: string;
+    order: number;
+  }>;
+  nodes: Array<{
+    userName: string;       // User 이름으로 매칭
+    phaseName: string;      // Phase 이름으로 매칭
+    contextName: string;    // Context 이름으로 매칭
+    action: string;
+    emotion: string;
+    emotionScore: number;
+    painPoint: string;
+    opportunity: string;
+  }>;
+  edges: Array<{
+    fromNodeIndex: number;  // nodes 배열의 인덱스
+    toNodeIndex: number;
+    description: string;
+  }>;
+  intersections: Array<{
+    phaseName: string;
+    contextName: string;
+    userNames: string[];
+    description: string;
+  }>;
 }

@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { extractJourneyElementsStream } from '../services/openai-stream.js';
-import type { Phase, Context, Artifact, Touchpoint, Connection, Journey } from '../types/journey.js';
+import type { User, Phase, Context, JourneyNode, JourneyEdge, Intersection, Journey } from '../types/journey.js';
 
 const router = Router();
 
-// Context별 색상 팔레트
-const CONTEXT_COLORS = [
+// User별 색상 팔레트
+const USER_COLORS = [
   '#3b82f6', // blue
   '#10b981', // green
   '#f59e0b', // amber
@@ -15,40 +15,66 @@ const CONTEXT_COLORS = [
   '#06b6d4', // cyan
   '#ec4899', // pink
   '#84cc16', // lime
+  '#f97316', // orange
+  '#14b8a6', // teal
 ];
 
 // 이름으로 인덱스 찾기 (유연한 매칭)
-function findIndexByName(items: { name: string }[], searchName: string, prefix?: string): number {
-  // "P1", "C2", "A3" 같은 패턴에서 숫자 추출 (1-based → 0-based)
-  const shortPattern = /^[PCA](\d+)$/i;
-  const shortMatch = searchName.match(shortPattern);
-  if (shortMatch) {
-    const idx = parseInt(shortMatch[1], 10) - 1;
-    if (idx >= 0 && idx < items.length) return idx;
-  }
-  
-  // "phase-0", "context-1" 같은 ID 패턴에서 숫자 추출
-  if (prefix) {
-    const idPattern = new RegExp(`^${prefix}-(\\d+)$`);
-    const idMatch = searchName.match(idPattern);
-    if (idMatch) {
-      const idx = parseInt(idMatch[1], 10);
-      if (idx >= 0 && idx < items.length) return idx;
-    }
-  }
-  
+function findIndexByName(items: { name: string }[], searchName: string): number {
   // 정확한 매칭 시도
   let idx = items.findIndex(item => item.name === searchName);
   if (idx !== -1) return idx;
   
-  // 부분 매칭 시도 (포함 관계)
+  // 부분 매칭 시도
   idx = items.findIndex(item => 
     item.name.includes(searchName) || searchName.includes(item.name)
   );
   if (idx !== -1) return idx;
   
-  // 첫 번째 요소 반환 (fallback)
   return 0;
+}
+
+// 동적 레이아웃 계산 상수
+const MIN_PHASE_WIDTH = 200;
+const MIN_CONTEXT_HEIGHT = 150;
+const CHAR_WIDTH = 10;
+const LINE_HEIGHT = 30;
+const PHASE_PADDING = 80;
+const CONTEXT_PADDING = 60;
+const LABEL_OFFSET_X = 180;
+const LABEL_OFFSET_Y = 100;
+
+function calculatePhaseWidth(phase: Phase): number {
+  const nameWidth = phase.name.length * CHAR_WIDTH + 60;
+  return Math.max(MIN_PHASE_WIDTH, nameWidth);
+}
+
+function calculateContextHeight(context: Context): number {
+  const nameLines = Math.ceil(context.name.length / 12);
+  const descLines = context.description ? Math.ceil(context.description.length / 18) : 0;
+  const totalLines = nameLines + descLines;
+  return Math.max(MIN_CONTEXT_HEIGHT, totalLines * LINE_HEIGHT + 60);
+}
+
+function calculateLayout(phases: Phase[], contexts: Context[]) {
+  const phaseWidths = phases.map(calculatePhaseWidth);
+  const contextHeights = contexts.map(calculateContextHeight);
+  
+  const phasePositions: number[] = [];
+  let currentX = LABEL_OFFSET_X;
+  phaseWidths.forEach((width) => {
+    phasePositions.push(currentX);
+    currentX += width + PHASE_PADDING;
+  });
+  
+  const contextPositions: number[] = [];
+  let currentY = LABEL_OFFSET_Y;
+  contextHeights.forEach((height) => {
+    contextPositions.push(currentY);
+    currentY += height + CONTEXT_PADDING;
+  });
+  
+  return { phasePositions, phaseWidths, contextPositions, contextHeights };
 }
 
 // POST /api/journeys/stream - SSE 스트리밍 여정 생성
@@ -70,11 +96,12 @@ router.post('/stream', async (req: Request, res: Response) => {
   res.flushHeaders();
 
   // 부분 데이터 저장
+  let users: User[] = [];
   let phases: Phase[] = [];
   let contexts: Context[] = [];
-  let artifacts: Artifact[] = [];
-  let touchpoints: Touchpoint[] = [];
-  let connections: Connection[] = [];
+  let nodes: JourneyNode[] = [];
+  let edges: JourneyEdge[] = [];
+  let intersections: Intersection[] = [];
   
   const cellCounts = new Map<string, number>();
   const journeyId = uuidv4();
@@ -88,6 +115,18 @@ router.post('/stream', async (req: Request, res: Response) => {
 
     await extractJourneyElementsStream(scenario, (type, data) => {
       switch (type) {
+        case 'users': {
+          const rawUsers = data as Array<{ name: string; type: string; description: string }>;
+          users = rawUsers.map((u, idx) => ({
+            ...u,
+            id: `user-${idx}`,
+            type: u.type as User['type'],
+            color: USER_COLORS[idx % USER_COLORS.length],
+          }));
+          sendEvent('users', users);
+          break;
+        }
+        
         case 'phases': {
           const rawPhases = data as Array<{ name: string; order: number; duration: string }>;
           phases = rawPhases.map((p, idx) => ({
@@ -103,28 +142,16 @@ router.post('/stream', async (req: Request, res: Response) => {
           contexts = rawContexts.map((c, idx) => ({
             ...c,
             id: `context-${idx}`,
-            color: CONTEXT_COLORS[idx % CONTEXT_COLORS.length],
           }));
           sendEvent('contexts', contexts);
           break;
         }
         
-        case 'artifacts': {
-          const rawArtifacts = data as Array<{ name: string; type: string; description: string }>;
-          artifacts = rawArtifacts.map((a, idx) => ({
-            ...a,
-            id: `artifact-${idx}`,
-            type: a.type as 'tangible' | 'intangible',
-          }));
-          sendEvent('artifacts', artifacts);
-          break;
-        }
-        
-        case 'touchpoints': {
-          const rawTouchpoints = data as Array<{
-            phaseId: string;
-            contextId: string;
-            artifactId: string;
+        case 'nodes': {
+          const rawNodes = data as Array<{
+            userName: string;
+            phaseName: string;
+            contextName: string;
             action: string;
             emotion: string;
             emotionScore: number;
@@ -132,50 +159,81 @@ router.post('/stream', async (req: Request, res: Response) => {
             opportunity: string;
           }>;
           
-          console.log('Processing touchpoints, phases:', phases.length, 'contexts:', contexts.length);
+          // 레이아웃 계산
+          const layout = calculateLayout(phases, contexts);
           
-          touchpoints = rawTouchpoints.map((tp, idx) => {
-            // 이름으로 인덱스 찾기 (prefix 전달)
-            const phaseIdx = findIndexByName(phases, tp.phaseId, 'phase');
-            const contextIdx = findIndexByName(contexts, tp.contextId, 'context');
-            const artifactIdx = findIndexByName(artifacts, tp.artifactId, 'artifact');
+          console.log('Processing nodes, users:', users.length, 'phases:', phases.length, 'contexts:', contexts.length);
+          
+          nodes = rawNodes.map((n, idx) => {
+            const userIdx = findIndexByName(users, n.userName);
+            const phaseIdx = findIndexByName(phases, n.phaseName);
+            const contextIdx = findIndexByName(contexts, n.contextName);
             
-            console.log(`Touchpoint ${idx}: phase="${tp.phaseId}"→${phaseIdx}, context="${tp.contextId}"→${contextIdx}`);
+            console.log(`Node ${idx}: user="${n.userName}"→${userIdx}, phase="${n.phaseName}"→${phaseIdx}, context="${n.contextName}"→${contextIdx}`);
             
-            // 셀 카운트 (같은 위치에 여러 터치포인트 처리)
-            const cellKey = `${contextIdx}-${phaseIdx}`;
+            const cellKey = `${phaseIdx}-${contextIdx}`;
             const cellCount = cellCounts.get(cellKey) ?? 0;
             cellCounts.set(cellKey, cellCount + 1);
             
-            // 위치 계산 (컴팩트 모드 기준 간격)
-            const x = phaseIdx * 200 + 180 + (cellCount * 40);
-            const y = contextIdx * 150 + 120;
+            const baseX = layout.phasePositions[phaseIdx] ?? (phaseIdx * 200 + LABEL_OFFSET_X);
+            const baseY = layout.contextPositions[contextIdx] ?? (contextIdx * 150 + LABEL_OFFSET_Y);
+            
+            const x = baseX + 20 + (cellCount * 50);
+            const y = baseY + 20;
             
             console.log(`  Position: x=${x}, y=${y}`);
             
             return {
-              ...tp,
-              id: `tp-${idx}`,
+              ...n,
+              id: `node-${idx}`,
+              userId: `user-${userIdx}`,
               phaseId: `phase-${phaseIdx}`,
               contextId: `context-${contextIdx}`,
-              artifactId: `artifact-${artifactIdx}`,
-              emotion: tp.emotion as 'positive' | 'neutral' | 'negative',
+              emotion: n.emotion as JourneyNode['emotion'],
               position: { x, y },
             };
           });
-          sendEvent('touchpoints', touchpoints);
+          sendEvent('nodes', nodes);
           break;
         }
         
-        case 'suggestedConnections': {
-          const rawConns = data as Array<{ fromIndex: number; toIndex: number; label: string }>;
-          connections = rawConns.map((conn, idx) => ({
-            id: `conn-${idx}`,
-            fromTouchpointId: `tp-${conn.fromIndex}`,
-            toTouchpointId: `tp-${conn.toIndex}`,
-            label: conn.label,
+        case 'edges': {
+          const rawEdges = data as Array<{ fromNodeIndex: number; toNodeIndex: number; description: string }>;
+          edges = rawEdges.map((e, idx) => ({
+            id: `edge-${idx}`,
+            fromNodeId: `node-${e.fromNodeIndex}`,
+            toNodeId: `node-${e.toNodeIndex}`,
+            description: e.description,
           }));
-          sendEvent('connections', connections);
+          sendEvent('edges', edges);
+          break;
+        }
+        
+        case 'intersections': {
+          const rawIntersections = data as Array<{
+            phaseName: string;
+            contextName: string;
+            userNames: string[];
+            description: string;
+          }>;
+          
+          intersections = rawIntersections.map((i, idx) => {
+            const phaseIdx = findIndexByName(phases, i.phaseName);
+            const contextIdx = findIndexByName(contexts, i.contextName);
+            
+            const nodeIds = nodes
+              .filter(n => n.phaseId === `phase-${phaseIdx}` && n.contextId === `context-${contextIdx}`)
+              .map(n => n.id);
+            
+            return {
+              id: `intersection-${idx}`,
+              phaseId: `phase-${phaseIdx}`,
+              contextId: `context-${contextIdx}`,
+              nodeIds,
+              description: i.description,
+            };
+          });
+          sendEvent('intersections', intersections);
           break;
         }
         
@@ -186,11 +244,12 @@ router.post('/stream', async (req: Request, res: Response) => {
             title: title || 'New Journey Map',
             description: `${scenario.substring(0, 100)}...`,
             scenario,
+            users,
             phases,
             contexts,
-            artifacts,
-            touchpoints,
-            connections,
+            nodes,
+            edges,
+            intersections,
             createdAt: now,
             updatedAt: now,
           };

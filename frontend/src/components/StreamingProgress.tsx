@@ -6,11 +6,12 @@ interface StreamingProgressProps {
 }
 
 const STEPS = [
+  { id: 'users', label: 'Users' },
   { id: 'phases', label: 'Phases' },
   { id: 'contexts', label: 'Contexts' },
-  { id: 'artifacts', label: 'Artifacts' },
-  { id: 'touchpoints', label: 'Touchpoints' },
-  { id: 'connections', label: 'Connections' },
+  { id: 'nodes', label: 'Nodes' },
+  { id: 'edges', label: 'Edges' },
+  { id: 'intersections', label: 'Intersections' },
   { id: 'complete', label: 'Complete' },
 ];
 

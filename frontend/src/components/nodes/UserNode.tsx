@@ -1,33 +1,21 @@
 import { memo, useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { 
-  Smartphone, 
-  Monitor, 
-  Cpu, 
-  Package,
-  Wrench,
-  Cloud,
-  Box,
+  User as UserIcon, 
+  Bot, 
+  Monitor,
+  Circle,
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
-import type { Touchpoint } from '../../types/journey';
+import type { JourneyNode, User } from '../../types/journey';
 
-// Artifact 타입별 아이콘
-const artifactIcons = {
-  tangible: <Box className="w-3 h-3" />,
-  intangible: <Cloud className="w-3 h-3" />,
-};
-
-// 일반 채널/아티팩트 아이콘
-const defaultIcons: Record<string, React.ReactNode> = {
-  '웨어러블': <Wrench className="w-3 h-3" />,
-  '로봇': <Cpu className="w-3 h-3" />,
-  '앱': <Smartphone className="w-3 h-3" />,
-  'MES': <Monitor className="w-3 h-3" />,
-  '시스템': <Monitor className="w-3 h-3" />,
-  '태블릿': <Smartphone className="w-3 h-3" />,
-  '충전': <Package className="w-3 h-3" />,
+// User 타입별 아이콘
+const userTypeIcons = {
+  human: <UserIcon className="w-4 h-4" />,
+  robot: <Bot className="w-4 h-4" />,
+  system: <Monitor className="w-4 h-4" />,
+  other: <Circle className="w-4 h-4" />,
 };
 
 // 감정별 색상
@@ -56,35 +44,23 @@ const emotionEmoji = {
   negative: '😟',
 };
 
-interface TouchpointNodeData extends Touchpoint {
-  contextColor?: string;
-  contextName?: string;
-  artifactName?: string;
-  artifactType?: 'tangible' | 'intangible';
+interface UserNodeData extends JourneyNode {
+  user?: User;
 }
 
-interface TouchpointNodeProps {
-  data: TouchpointNodeData;
+interface UserNodeProps {
+  data: UserNodeData;
   selected?: boolean;
 }
 
-function TouchpointNode({ data, selected }: TouchpointNodeProps) {
+function UserNode({ data, selected }: UserNodeProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   
   const colors = emotionColors[data.emotion] || emotionColors.neutral;
-  const contextColor = data.contextColor || '#6b7280';
-  const artifactType = data.artifactType || 'tangible';
+  const userColor = data.user?.color || '#6b7280';
+  const userType = data.user?.type || 'other';
+  const userName = data.user?.name || 'Unknown';
   
-  // 아티팩트 이름에서 아이콘 찾기
-  const getIcon = () => {
-    if (data.artifactName) {
-      for (const [key, icon] of Object.entries(defaultIcons)) {
-        if (data.artifactName.includes(key)) return icon;
-      }
-    }
-    return artifactIcons[artifactType];
-  };
-
   // 액션 텍스트 truncate
   const truncateText = (text: string, maxLength: number) => {
     if (text.length <= maxLength) return text;
@@ -105,31 +81,36 @@ function TouchpointNode({ data, selected }: TouchpointNodeProps) {
         ${selected ? 'ring-2 ring-primary-500 ring-offset-2' : ''}
         ${isExpanded ? 'min-w-[220px] max-w-[280px]' : 'min-w-[120px] max-w-[160px]'}
       `}
-      style={{ borderColor: contextColor }}
+      style={{ borderColor: userColor }}
     >
       {/* 입력 핸들 */}
       <Handle
         type="target"
         position={Position.Left}
-        className="w-2 h-2 border-2 border-white"
-        style={{ backgroundColor: contextColor }}
+        className="w-3 h-3 border-2 border-white"
+        style={{ backgroundColor: userColor }}
       />
 
       {/* 컴팩트 모드 */}
       {!isExpanded ? (
         <div className="p-2">
-          {/* 헤더 */}
+          {/* 헤더 - User 정보 */}
           <div className="flex items-center gap-1.5 mb-1">
-            <span style={{ color: contextColor }}>{getIcon()}</span>
-            <span className="text-[10px] font-medium text-gray-500 truncate flex-1">
-              {data.artifactName || 'Artifact'}
+            <span 
+              className="p-1 rounded-full" 
+              style={{ backgroundColor: `${userColor}30`, color: userColor }}
+            >
+              {userTypeIcons[userType]}
+            </span>
+            <span className="text-xs font-semibold truncate flex-1" style={{ color: userColor }}>
+              {userName}
             </span>
             <span className="text-sm">{emotionEmoji[data.emotion]}</span>
           </div>
           
           {/* 액션 (짧게) */}
-          <p className="text-xs text-gray-800 font-medium leading-tight">
-            {truncateText(data.action, 25)}
+          <p className="text-xs text-gray-800 leading-tight">
+            {truncateText(data.action, 30)}
           </p>
           
           {/* 확장 힌트 */}
@@ -140,25 +121,30 @@ function TouchpointNode({ data, selected }: TouchpointNodeProps) {
       ) : (
         /* 확장 모드 */
         <>
-          {/* 헤더 */}
+          {/* 헤더 - User 정보 */}
           <div 
             className="px-3 py-2 flex items-center gap-2 rounded-t-md"
-            style={{ backgroundColor: `${contextColor}20` }}
+            style={{ backgroundColor: `${userColor}20` }}
           >
-            <span style={{ color: contextColor }}>{getIcon()}</span>
-            <span className="text-xs font-medium text-gray-700 truncate flex-1">
-              {data.artifactName || 'Artifact'}
+            <span 
+              className="p-1.5 rounded-full" 
+              style={{ backgroundColor: `${userColor}30`, color: userColor }}
+            >
+              {userTypeIcons[userType]}
             </span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-              artifactType === 'tangible' 
-                ? 'bg-amber-100 text-amber-700' 
-                : 'bg-blue-100 text-blue-700'
-            }`}>
-              {artifactType === 'tangible' ? 'Tangible' : 'Intangible'}
-            </span>
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-semibold block" style={{ color: userColor }}>
+                {userName}
+              </span>
+              {data.user?.description && (
+                <span className="text-xs text-gray-500 truncate block">
+                  {data.user.description}
+                </span>
+              )}
+            </div>
           </div>
 
-          {/* 본문 */}
+          {/* 본문 - 행동 */}
           <div className="px-3 py-2">
             <p className="text-sm text-gray-800 font-medium leading-tight">
               {data.action}
@@ -206,11 +192,11 @@ function TouchpointNode({ data, selected }: TouchpointNodeProps) {
       <Handle
         type="source"
         position={Position.Right}
-        className="w-2 h-2 border-2 border-white"
-        style={{ backgroundColor: contextColor }}
+        className="w-3 h-3 border-2 border-white"
+        style={{ backgroundColor: userColor }}
       />
     </div>
   );
 }
 
-export default memo(TouchpointNode);
+export default memo(UserNode);

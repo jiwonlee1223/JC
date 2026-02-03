@@ -1,17 +1,18 @@
-import type { Journey, Phase, Context, Artifact, Touchpoint, Connection } from '../types/journey';
+import type { Journey, User, Phase, Context, JourneyNode, JourneyEdge, Intersection } from '../types/journey';
 
 export interface StreamEvent {
-  type: 'start' | 'phases' | 'contexts' | 'artifacts' | 'touchpoints' | 'connections' | 'complete' | 'error';
+  type: 'start' | 'users' | 'phases' | 'contexts' | 'nodes' | 'edges' | 'intersections' | 'complete' | 'error';
   data: unknown;
 }
 
 export interface StreamCallbacks {
   onStart?: (data: { journeyId: string; title: string }) => void;
+  onUsers?: (users: User[]) => void;
   onPhases?: (phases: Phase[]) => void;
   onContexts?: (contexts: Context[]) => void;
-  onArtifacts?: (artifacts: Artifact[]) => void;
-  onTouchpoints?: (touchpoints: Touchpoint[]) => void;
-  onConnections?: (connections: Connection[]) => void;
+  onNodes?: (nodes: JourneyNode[]) => void;
+  onEdges?: (edges: JourneyEdge[]) => void;
+  onIntersections?: (intersections: Intersection[]) => void;
   onComplete?: (journey: Journey) => void;
   onError?: (error: { message: string }) => void;
 }
@@ -61,20 +62,23 @@ export async function createJourneyStream(
             case 'start':
               callbacks.onStart?.(event.data as { journeyId: string; title: string });
               break;
+            case 'users':
+              callbacks.onUsers?.(event.data as User[]);
+              break;
             case 'phases':
               callbacks.onPhases?.(event.data as Phase[]);
               break;
             case 'contexts':
               callbacks.onContexts?.(event.data as Context[]);
               break;
-            case 'artifacts':
-              callbacks.onArtifacts?.(event.data as Artifact[]);
+            case 'nodes':
+              callbacks.onNodes?.(event.data as JourneyNode[]);
               break;
-            case 'touchpoints':
-              callbacks.onTouchpoints?.(event.data as Touchpoint[]);
+            case 'edges':
+              callbacks.onEdges?.(event.data as JourneyEdge[]);
               break;
-            case 'connections':
-              callbacks.onConnections?.(event.data as Connection[]);
+            case 'intersections':
+              callbacks.onIntersections?.(event.data as Intersection[]);
               break;
             case 'complete':
               callbacks.onComplete?.(event.data as Journey);
