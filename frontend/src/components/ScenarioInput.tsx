@@ -30,7 +30,7 @@ export function ScenarioInput({ onSubmit, isLoading }: ScenarioInputProps) {
     <div className="bg-gray-50 rounded-lg p-4">
       <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
         <Sparkles className="w-5 h-5 text-primary-500" />
-        시나리오 입력
+        Scenario Input
       </h2>
       
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -51,7 +51,7 @@ export function ScenarioInput({ onSubmit, isLoading }: ScenarioInputProps) {
 
         <div>
           <label htmlFor="scenario" className="block text-sm font-medium text-gray-700 mb-1">
-            시나리오 텍스트
+            Scenario Text
           </label>
           <textarea
             id="scenario"
@@ -73,12 +73,12 @@ export function ScenarioInput({ onSubmit, isLoading }: ScenarioInputProps) {
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                분석 중...
+                Analyzing...
               </>
             ) : (
               <>
                 <Sparkles className="w-4 h-4" />
-                여정 지도 생성
+                Generate
               </>
             )}
           </button>
@@ -89,7 +89,7 @@ export function ScenarioInput({ onSubmit, isLoading }: ScenarioInputProps) {
             className="px-4 py-2.5 text-primary-600 font-medium rounded-lg hover:bg-primary-50 transition"
             disabled={isLoading}
           >
-            예시 불러오기
+            Show Example
           </button>
         </div>
       </form>

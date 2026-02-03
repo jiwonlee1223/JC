@@ -54,24 +54,24 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
   const buildNodes = useCallback((): Node[] => {
     const nodes: Node[] = [];
 
-    // Phase 레이블 노드 (상단)
+    // Phase 레이블 노드 (상단) - 컴팩트 모드 기준 간격
     journey.phases.forEach((phase, idx) => {
       nodes.push({
         id: `phase-label-${phase.id}`,
         type: 'phaseLabel',
-        position: { x: idx * 280 + 150, y: 20 },
+        position: { x: idx * 200 + 160, y: 20 },
         data: { name: phase.name, duration: phase.duration },
         draggable: false,
         selectable: false,
       });
     });
 
-    // Context 레이블 노드 (좌측) - 인덱스 기반 위치
+    // Context 레이블 노드 (좌측) - 컴팩트 모드 기준 간격
     journey.contexts.forEach((context, idx) => {
       nodes.push({
         id: `context-label-${context.id}`,
         type: 'contextLabel',
-        position: { x: 20, y: idx * 180 + 100 },
+        position: { x: 20, y: idx * 150 + 100 },
         data: { 
           name: context.name, 
           description: context.description,
@@ -92,10 +92,10 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
       // phaseId에서 인덱스 추출 (phase-0 → 0)
       const phaseIdx = tp.phaseId ? parseInt(tp.phaseId.replace('phase-', '')) || 0 : 0;
       
-      // 위치가 없거나 잘못된 경우 계산
+      // 위치가 없거나 잘못된 경우 계산 (컴팩트 모드 기준 간격)
       const position = tp.position && tp.position.x !== undefined && tp.position.y !== undefined
         ? tp.position
-        : { x: phaseIdx * 280 + 180, y: contextIdx * 180 + 120 };
+        : { x: phaseIdx * 200 + 180, y: contextIdx * 150 + 120 };
       
       const nodeData: TouchpointNodeData = {
         ...tp,

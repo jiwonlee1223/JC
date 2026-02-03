@@ -18,7 +18,25 @@ const CONTEXT_COLORS = [
 ];
 
 // 이름으로 인덱스 찾기 (유연한 매칭)
-function findIndexByName(items: { name: string }[], searchName: string): number {
+function findIndexByName(items: { name: string }[], searchName: string, prefix?: string): number {
+  // "P1", "C2", "A3" 같은 패턴에서 숫자 추출 (1-based → 0-based)
+  const shortPattern = /^[PCA](\d+)$/i;
+  const shortMatch = searchName.match(shortPattern);
+  if (shortMatch) {
+    const idx = parseInt(shortMatch[1], 10) - 1;
+    if (idx >= 0 && idx < items.length) return idx;
+  }
+  
+  // "phase-0", "context-1" 같은 ID 패턴에서 숫자 추출
+  if (prefix) {
+    const idPattern = new RegExp(`^${prefix}-(\\d+)$`);
+    const idMatch = searchName.match(idPattern);
+    if (idMatch) {
+      const idx = parseInt(idMatch[1], 10);
+      if (idx >= 0 && idx < items.length) return idx;
+    }
+  }
+  
   // 정확한 매칭 시도
   let idx = items.findIndex(item => item.name === searchName);
   if (idx !== -1) return idx;
@@ -117,10 +135,10 @@ router.post('/stream', async (req: Request, res: Response) => {
           console.log('Processing touchpoints, phases:', phases.length, 'contexts:', contexts.length);
           
           touchpoints = rawTouchpoints.map((tp, idx) => {
-            // 이름으로 인덱스 찾기
-            const phaseIdx = findIndexByName(phases, tp.phaseId);
-            const contextIdx = findIndexByName(contexts, tp.contextId);
-            const artifactIdx = findIndexByName(artifacts, tp.artifactId);
+            // 이름으로 인덱스 찾기 (prefix 전달)
+            const phaseIdx = findIndexByName(phases, tp.phaseId, 'phase');
+            const contextIdx = findIndexByName(contexts, tp.contextId, 'context');
+            const artifactIdx = findIndexByName(artifacts, tp.artifactId, 'artifact');
             
             console.log(`Touchpoint ${idx}: phase="${tp.phaseId}"→${phaseIdx}, context="${tp.contextId}"→${contextIdx}`);
             
@@ -129,9 +147,9 @@ router.post('/stream', async (req: Request, res: Response) => {
             const cellCount = cellCounts.get(cellKey) ?? 0;
             cellCounts.set(cellKey, cellCount + 1);
             
-            // 위치 계산
-            const x = phaseIdx * 280 + 180 + (cellCount * 50);
-            const y = contextIdx * 180 + 120;
+            // 위치 계산 (컴팩트 모드 기준 간격)
+            const x = phaseIdx * 200 + 180 + (cellCount * 40);
+            const y = contextIdx * 150 + 120;
             
             console.log(`  Position: x=${x}, y=${y}`);
             
