@@ -44,14 +44,17 @@ function findIndexByName(items: { name: string }[], searchName: string): number 
 }
 
 // 동적 레이아웃 계산 상수
-const MIN_PHASE_WIDTH = 200;
-const MIN_CONTEXT_HEIGHT = 150;
+const MIN_PHASE_WIDTH = 250;
+const MIN_CONTEXT_HEIGHT = 200;
 const CHAR_WIDTH = 10;
 const LINE_HEIGHT = 30;
-const PHASE_PADDING = 80;
-const CONTEXT_PADDING = 60;
+const PHASE_PADDING = 100;
+const CONTEXT_PADDING = 80;
 const LABEL_OFFSET_X = 180;
 const LABEL_OFFSET_Y = 100;
+
+// 원형 배치 상수
+const CIRCULAR_RADIUS = 70;
 
 // Phase 너비 계산
 function calculatePhaseWidth(phase: Phase): number {
@@ -64,7 +67,26 @@ function calculateContextHeight(context: Context): number {
   const nameLines = Math.ceil(context.name.length / 12);
   const descLines = context.description ? Math.ceil(context.description.length / 18) : 0;
   const totalLines = nameLines + descLines;
-  return Math.max(MIN_CONTEXT_HEIGHT, totalLines * LINE_HEIGHT + 60);
+  return Math.max(MIN_CONTEXT_HEIGHT, totalLines * LINE_HEIGHT + 80);
+}
+
+// 원형 배치 위치 계산
+function calculateCircularPosition(
+  centerX: number,
+  centerY: number,
+  index: number,
+  total: number,
+  radius: number
+): { x: number; y: number } {
+  if (total === 1) {
+    return { x: centerX, y: centerY };
+  }
+  const startAngle = -Math.PI / 2;
+  const angle = startAngle + (2 * Math.PI / total) * index;
+  return {
+    x: centerX + radius * Math.cos(angle),
+    y: centerY + radius * Math.sin(angle),
+  };
 }
 
 // 레이아웃 정보 계산
@@ -121,21 +143,40 @@ export async function createJourneyFromScenario(
   // 레이아웃 계산
   const layout = calculateLayout(phases, contexts);
 
-  // 셀 카운트 (같은 위치에 여러 노드)
-  const cellCounts = new Map<string, number>();
+  // 먼저 셀별로 그룹핑
+  const cellGroupsTemp = new Map<string, Array<{ raw: typeof extracted.nodes[0], idx: number }>>();
+  extracted.nodes.forEach((n, idx) => {
+    const phaseIdx = findIndexByName(phases, n.phaseName, 'phase');
+    const contextIdx = findIndexByName(contexts, n.contextName, 'context');
+    const cellKey = `${phaseIdx}-${contextIdx}`;
+    if (!cellGroupsTemp.has(cellKey)) {
+      cellGroupsTemp.set(cellKey, []);
+    }
+    cellGroupsTemp.get(cellKey)!.push({ raw: n, idx });
+  });
 
-  // Node 생성
+  // Node 생성 (원형 배치)
   const nodes: JourneyNode[] = extracted.nodes.map((n, idx) => {
-    const userIdx = findIndexByName(users, n.userName);
-    const phaseIdx = findIndexByName(phases, n.phaseName);
-    const contextIdx = findIndexByName(contexts, n.contextName);
+    const userIdx = findIndexByName(users, n.userName, 'user');
+    const phaseIdx = findIndexByName(phases, n.phaseName, 'phase');
+    const contextIdx = findIndexByName(contexts, n.contextName, 'context');
     
     const cellKey = `${phaseIdx}-${contextIdx}`;
-    const cellCount = cellCounts.get(cellKey) ?? 0;
-    cellCounts.set(cellKey, cellCount + 1);
+    const cellNodes = cellGroupsTemp.get(cellKey) || [];
+    const nodeIndexInCell = cellNodes.findIndex(cn => cn.idx === idx);
+    const totalInCell = cellNodes.length;
     
     const baseX = layout.phasePositions[phaseIdx] ?? (phaseIdx * 200 + LABEL_OFFSET_X);
     const baseY = layout.contextPositions[contextIdx] ?? (contextIdx * 150 + LABEL_OFFSET_Y);
+    const phaseWidth = layout.phaseWidths[phaseIdx] ?? MIN_PHASE_WIDTH;
+    const contextHeight = layout.contextHeights[contextIdx] ?? MIN_CONTEXT_HEIGHT;
+    
+    // 셀 중심점
+    const centerX = baseX + phaseWidth / 2;
+    const centerY = baseY + contextHeight / 2;
+    
+    // 원형 배치
+    const circularPos = calculateCircularPosition(centerX, centerY, nodeIndexInCell, totalInCell, CIRCULAR_RADIUS);
     
     return {
       ...n,
@@ -145,8 +186,8 @@ export async function createJourneyFromScenario(
       contextId: `context-${contextIdx}`,
       emotion: n.emotion as JourneyNode['emotion'],
       position: { 
-        x: baseX + 20 + (cellCount * 50), 
-        y: baseY + 20 
+        x: circularPos.x - 60, 
+        y: circularPos.y - 30 
       },
     };
   });
