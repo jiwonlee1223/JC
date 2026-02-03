@@ -6,14 +6,15 @@ import { JourneyDetails } from './components/JourneyDetails';
 import { StreamingProgress } from './components/StreamingProgress';
 import { updateJourney } from './api/journey';
 import { createJourneyStream } from './api/journey-stream';
-import type { Journey, Actor, Phase, Touchpoint, Connection } from './types/journey';
+import type { Journey, Phase, Context, Artifact, Touchpoint, Connection } from './types/journey';
 
 // 점진적으로 빌드되는 Journey 상태
 interface PartialJourney {
   id?: string;
   title?: string;
-  actors: Actor[];
   phases: Phase[];
+  contexts: Context[];
+  artifacts: Artifact[];
   touchpoints: Touchpoint[];
   connections: Connection[];
 }
@@ -40,15 +41,16 @@ function App() {
     setError(null);
     setJourney(null);
     setPartialJourney({
-      actors: [],
       phases: [],
+      contexts: [],
+      artifacts: [],
       touchpoints: [],
       connections: [],
     });
     setStreamingState({
       isStreaming: true,
       completedSteps: [],
-      currentStep: 'actors',
+      currentStep: 'phases',
     });
 
     try {
@@ -61,20 +63,29 @@ function App() {
           } : null);
         },
         
-        onActors: (actors) => {
-          setPartialJourney(prev => prev ? { ...prev, actors } : null);
-          setStreamingState(prev => ({
-            ...prev,
-            completedSteps: [...prev.completedSteps, 'actors'],
-            currentStep: 'phases',
-          }));
-        },
-        
         onPhases: (phases) => {
           setPartialJourney(prev => prev ? { ...prev, phases } : null);
           setStreamingState(prev => ({
             ...prev,
             completedSteps: [...prev.completedSteps, 'phases'],
+            currentStep: 'contexts',
+          }));
+        },
+        
+        onContexts: (contexts) => {
+          setPartialJourney(prev => prev ? { ...prev, contexts } : null);
+          setStreamingState(prev => ({
+            ...prev,
+            completedSteps: [...prev.completedSteps, 'contexts'],
+            currentStep: 'artifacts',
+          }));
+        },
+        
+        onArtifacts: (artifacts) => {
+          setPartialJourney(prev => prev ? { ...prev, artifacts } : null);
+          setStreamingState(prev => ({
+            ...prev,
+            completedSteps: [...prev.completedSteps, 'artifacts'],
             currentStep: 'touchpoints',
           }));
         },
@@ -135,15 +146,13 @@ function App() {
     }
   };
 
-  // 현재 표시할 데이터 (완료된 Journey 또는 부분 Journey)
+  // 현재 표시할 데이터
   const displayData = journey || (partialJourney && {
     ...partialJourney,
     id: partialJourney.id || 'temp',
     title: partialJourney.title || 'Generating...',
     description: '',
     scenario: '',
-    physicalEvidences: [],
-    userActions: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   } as Journey);

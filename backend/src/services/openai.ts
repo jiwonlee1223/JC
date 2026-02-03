@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import type { ExtractionResult } from '../types/journey.js';
 
-// 환경 변수 로드 (ESM 모듈 로딩 순서 문제 해결)
+// 환경 변수 로드
 dotenv.config();
 
 // OpenAI 클라이언트 (lazy 초기화)
@@ -11,7 +11,7 @@ let openaiClient: OpenAI | null = null;
 function getOpenAIClient(): OpenAI {
   if (!openaiClient) {
     if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY 환경 변수가 설정되지 않았습니다.');
+      throw new Error('OPENAI_API_KEY is not set');
     }
     openaiClient = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
@@ -24,28 +24,35 @@ function getOpenAIClient(): OpenAI {
 const EXTRACTION_SYSTEM_PROMPT = `당신은 사용자 여정 지도(User Journey Map) 전문가입니다.
 사용자가 제공하는 시나리오 텍스트를 분석하여 다음 요소들을 추출해주세요:
 
-1. **Actors (주체)**: 여정에 참여하는 모든 주체들 (사람, 로봇, 시스템 등)
-   - name: 이름 (예: "작업자", "행낭로봇", "관리자", "MES시스템")
-   - type: 유형 (human/robot/system)
-   - order: Swimlane 순서 (0부터 시작)
+1. **Phases (단계)**: 시간 흐름에 따른 경험 단계
+   - name: 단계 이름 (예: "준비", "작업", "점검", "완료")
+   - order: 순서 (0부터 시작)
+   - duration: 예상 소요 시간
 
-2. **Phases (단계)**: 여정의 시간적 단계 (예: 준비, 작업, 자재요청, 완료)
+2. **Contexts (컨텍스트)**: 서비스 경험이 일어나는 물리적 공간/환경
+   - name: 공간 이름 (예: "공장 라인", "자재 창고", "휴게실")
+   - description: 환경 설명
+   - order: 세로축 배치 순서 (0부터 시작)
 
-3. **Touchpoints (터치포인트)**: 각 주체가 수행하는 활동
-   - actorId: 이 터치포인트를 수행하는 주체의 이름
+3. **Artifacts (아티팩트)**: Context 내 구체적 접점 (Physical Evidence)
+   - name: 접점 이름 (예: "웨어러블 로봇", "MES 앱", "충전 스테이션")
+   - type: "tangible" (유형: 제품, 기기 등) 또는 "intangible" (무형: 앱, 서비스 등)
+   - description: 설명
+
+4. **Touchpoints (터치포인트)**: 사용자 경험의 핵심 구성 요소
    - phaseId: 속한 Phase 이름
-   - channel: 채널/도구 (태블릿, MES, 충전스테이션 등)
-   - action: 수행하는 행동
-   - emotion: 상태 (positive/neutral/negative)
-   - emotionScore: 상태 점수 (-1 ~ 1)
-   - painPoint: 문제점 (없으면 빈 문자열)
+   - contextId: 속한 Context 이름
+   - artifactId: 사용되는 Artifact 이름
+   - action: 사용자 행동/경험 설명
+   - emotion: 감정 상태 (positive/neutral/negative)
+   - emotionScore: 감정 점수 (-1 ~ 1)
+   - painPoint: 불편 사항 (없으면 빈 문자열)
    - opportunity: 개선 기회 (없으면 빈 문자열)
 
-4. **Physical Evidences (물리적 증거)**: 각 터치포인트에서의 물리적/디지털 증거
-
-5. **User Actions (상세 행동)**: 각 터치포인트에서의 상세 행동, 생각, 상태
-
-6. **suggestedConnections**: 터치포인트 간 연결 (특히 다른 Actor 간 핸드오프)
+5. **suggestedConnections**: 터치포인트 간 연결
+   - fromIndex: 시작 터치포인트 인덱스
+   - toIndex: 도착 터치포인트 인덱스
+   - label: 연결 설명 (예: "이동", "전달", "알림")
 
 JSON 형식으로 응답해주세요.`;
 
@@ -54,7 +61,6 @@ export async function extractJourneyElements(scenario: string): Promise<Extracti
   try {
     const openai = getOpenAIClient();
     
-    // GPT-5.2 Responses API 사용
     const response = await openai.responses.create({
       model: 'gpt-5.2',
       input: [
@@ -74,19 +80,6 @@ export async function extractJourneyElements(scenario: string): Promise<Extracti
           schema: {
             type: 'object',
             properties: {
-              actors: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    name: { type: 'string' },
-                    type: { type: 'string', enum: ['human', 'robot', 'system'] },
-                    order: { type: 'number' },
-                  },
-                  required: ['name', 'type', 'order'],
-                  additionalProperties: false,
-                },
-              },
               phases: {
                 type: 'array',
                 items: {
@@ -100,48 +93,47 @@ export async function extractJourneyElements(scenario: string): Promise<Extracti
                   additionalProperties: false,
                 },
               },
+              contexts: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    description: { type: 'string' },
+                    order: { type: 'number' },
+                  },
+                  required: ['name', 'description', 'order'],
+                  additionalProperties: false,
+                },
+              },
+              artifacts: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    type: { type: 'string', enum: ['tangible', 'intangible'] },
+                    description: { type: 'string' },
+                  },
+                  required: ['name', 'type', 'description'],
+                  additionalProperties: false,
+                },
+              },
               touchpoints: {
                 type: 'array',
                 items: {
                   type: 'object',
                   properties: {
-                    actorId: { type: 'string' },
                     phaseId: { type: 'string' },
-                    channel: { type: 'string' },
+                    contextId: { type: 'string' },
+                    artifactId: { type: 'string' },
                     action: { type: 'string' },
                     emotion: { type: 'string', enum: ['positive', 'neutral', 'negative'] },
                     emotionScore: { type: 'number' },
                     painPoint: { type: 'string' },
                     opportunity: { type: 'string' },
                   },
-                  required: ['actorId', 'phaseId', 'channel', 'action', 'emotion', 'emotionScore', 'painPoint', 'opportunity'],
-                  additionalProperties: false,
-                },
-              },
-              physicalEvidences: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    touchpointId: { type: 'string' },
-                    type: { type: 'string', enum: ['digital', 'physical', 'human'] },
-                    description: { type: 'string' },
-                  },
-                  required: ['touchpointId', 'type', 'description'],
-                  additionalProperties: false,
-                },
-              },
-              userActions: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    touchpointId: { type: 'string' },
-                    description: { type: 'string' },
-                    thoughts: { type: 'string' },
-                    feelings: { type: 'string' },
-                  },
-                  required: ['touchpointId', 'description', 'thoughts', 'feelings'],
+                  required: ['phaseId', 'contextId', 'artifactId', 'action', 'emotion', 'emotionScore', 'painPoint', 'opportunity'],
                   additionalProperties: false,
                 },
               },
@@ -152,29 +144,29 @@ export async function extractJourneyElements(scenario: string): Promise<Extracti
                   properties: {
                     fromIndex: { type: 'number' },
                     toIndex: { type: 'number' },
+                    label: { type: 'string' },
                   },
-                  required: ['fromIndex', 'toIndex'],
+                  required: ['fromIndex', 'toIndex', 'label'],
                   additionalProperties: false,
                 },
               },
             },
-            required: ['actors', 'phases', 'touchpoints', 'physicalEvidences', 'userActions', 'suggestedConnections'],
+            required: ['phases', 'contexts', 'artifacts', 'touchpoints', 'suggestedConnections'],
             additionalProperties: false,
           },
         },
       },
       reasoning: {
-        effort: 'medium', // 분석 작업이므로 중간 수준의 추론
+        effort: 'medium',
       },
     });
 
-    // 응답에서 텍스트 추출
     const outputText = response.output_text;
     const result: ExtractionResult = JSON.parse(outputText);
     
     return result;
   } catch (error) {
     console.error('GPT-5.2 extraction error:', error);
-    throw new Error('시나리오 분석 중 오류가 발생했습니다.');
+    throw new Error('Scenario analysis failed');
   }
 }

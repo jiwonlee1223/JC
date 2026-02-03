@@ -6,8 +6,9 @@ interface StreamingProgressProps {
 }
 
 const STEPS = [
-  { id: 'actors', label: 'Actors' },
   { id: 'phases', label: 'Phases' },
+  { id: 'contexts', label: 'Contexts' },
+  { id: 'artifacts', label: 'Artifacts' },
   { id: 'touchpoints', label: 'Touchpoints' },
   { id: 'connections', label: 'Connections' },
   { id: 'complete', label: 'Complete' },

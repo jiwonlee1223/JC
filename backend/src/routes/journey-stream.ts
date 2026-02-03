@@ -1,37 +1,36 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { extractJourneyElementsStream } from '../services/openai-stream.js';
-import type { Actor, Phase, Touchpoint, PhysicalEvidence, UserAction, Connection, Journey } from '../types/journey.js';
+import type { Phase, Context, Artifact, Touchpoint, Connection, Journey } from '../types/journey.js';
 
 const router = Router();
 
-// Actor별 색상 팔레트
-const ACTOR_COLORS = [
+// Context별 색상 팔레트
+const CONTEXT_COLORS = [
   '#3b82f6', // blue
   '#10b981', // green
   '#f59e0b', // amber
   '#ef4444', // red
   '#8b5cf6', // purple
   '#06b6d4', // cyan
+  '#ec4899', // pink
+  '#84cc16', // lime
 ];
 
-// 터치포인트 위치 계산
-function calculatePosition(
-  touchpoint: { actorId: string; phaseId: string },
-  actors: Actor[],
-  phases: Phase[],
-  existingCount: number
-): { x: number; y: number } {
-  const phaseOrder = new Map(phases.map(p => [p.name, p.order]));
-  const actorOrder = new Map(actors.map(a => [a.name, a.order]));
+// 이름으로 인덱스 찾기 (유연한 매칭)
+function findIndexByName(items: { name: string }[], searchName: string): number {
+  // 정확한 매칭 시도
+  let idx = items.findIndex(item => item.name === searchName);
+  if (idx !== -1) return idx;
   
-  const phaseIdx = phaseOrder.get(touchpoint.phaseId) ?? 0;
-  const actorIdx = actorOrder.get(touchpoint.actorId) ?? 0;
+  // 부분 매칭 시도 (포함 관계)
+  idx = items.findIndex(item => 
+    item.name.includes(searchName) || searchName.includes(item.name)
+  );
+  if (idx !== -1) return idx;
   
-  const x = phaseIdx * 280 + 180 + (existingCount * 30);
-  const y = actorIdx * 180 + 120;
-  
-  return { x, y };
+  // 첫 번째 요소 반환 (fallback)
+  return 0;
 }
 
 // POST /api/journeys/stream - SSE 스트리밍 여정 생성
@@ -53,41 +52,24 @@ router.post('/stream', async (req: Request, res: Response) => {
   res.flushHeaders();
 
   // 부분 데이터 저장
-  let actors: Actor[] = [];
   let phases: Phase[] = [];
+  let contexts: Context[] = [];
+  let artifacts: Artifact[] = [];
   let touchpoints: Touchpoint[] = [];
-  let physicalEvidences: PhysicalEvidence[] = [];
-  let userActions: UserAction[] = [];
   let connections: Connection[] = [];
   
-  // 같은 셀에 있는 터치포인트 카운트
   const cellCounts = new Map<string, number>();
-
   const journeyId = uuidv4();
 
-  // SSE 이벤트 전송 헬퍼
   const sendEvent = (type: string, data: unknown) => {
     res.write(`data: ${JSON.stringify({ type, data })}\n\n`);
   };
 
   try {
-    // 시작 이벤트
     sendEvent('start', { journeyId, title: title || 'New Journey Map' });
 
     await extractJourneyElementsStream(scenario, (type, data) => {
       switch (type) {
-        case 'actors': {
-          const rawActors = data as Array<{ name: string; type: string; order: number }>;
-          actors = rawActors.map((a, idx) => ({
-            ...a,
-            id: `actor-${idx}`,
-            type: a.type as 'human' | 'robot' | 'system',
-            color: ACTOR_COLORS[idx % ACTOR_COLORS.length],
-          }));
-          sendEvent('actors', actors);
-          break;
-        }
-        
         case 'phases': {
           const rawPhases = data as Array<{ name: string; order: number; duration: string }>;
           phases = rawPhases.map((p, idx) => ({
@@ -98,11 +80,33 @@ router.post('/stream', async (req: Request, res: Response) => {
           break;
         }
         
+        case 'contexts': {
+          const rawContexts = data as Array<{ name: string; description: string; order: number }>;
+          contexts = rawContexts.map((c, idx) => ({
+            ...c,
+            id: `context-${idx}`,
+            color: CONTEXT_COLORS[idx % CONTEXT_COLORS.length],
+          }));
+          sendEvent('contexts', contexts);
+          break;
+        }
+        
+        case 'artifacts': {
+          const rawArtifacts = data as Array<{ name: string; type: string; description: string }>;
+          artifacts = rawArtifacts.map((a, idx) => ({
+            ...a,
+            id: `artifact-${idx}`,
+            type: a.type as 'tangible' | 'intangible',
+          }));
+          sendEvent('artifacts', artifacts);
+          break;
+        }
+        
         case 'touchpoints': {
           const rawTouchpoints = data as Array<{
-            actorId: string;
             phaseId: string;
-            channel: string;
+            contextId: string;
+            artifactId: string;
             action: string;
             emotion: string;
             emotionScore: number;
@@ -110,71 +114,64 @@ router.post('/stream', async (req: Request, res: Response) => {
             opportunity: string;
           }>;
           
+          console.log('Processing touchpoints, phases:', phases.length, 'contexts:', contexts.length);
+          
           touchpoints = rawTouchpoints.map((tp, idx) => {
-            const cellKey = `${tp.actorId}-${tp.phaseId}`;
+            // 이름으로 인덱스 찾기
+            const phaseIdx = findIndexByName(phases, tp.phaseId);
+            const contextIdx = findIndexByName(contexts, tp.contextId);
+            const artifactIdx = findIndexByName(artifacts, tp.artifactId);
+            
+            console.log(`Touchpoint ${idx}: phase="${tp.phaseId}"→${phaseIdx}, context="${tp.contextId}"→${contextIdx}`);
+            
+            // 셀 카운트 (같은 위치에 여러 터치포인트 처리)
+            const cellKey = `${contextIdx}-${phaseIdx}`;
             const cellCount = cellCounts.get(cellKey) ?? 0;
             cellCounts.set(cellKey, cellCount + 1);
             
-            const position = calculatePosition(tp, actors, phases, cellCount);
+            // 위치 계산
+            const x = phaseIdx * 280 + 180 + (cellCount * 50);
+            const y = contextIdx * 180 + 120;
+            
+            console.log(`  Position: x=${x}, y=${y}`);
             
             return {
               ...tp,
               id: `tp-${idx}`,
-              actorId: `actor-${actors.findIndex(a => a.name === tp.actorId)}`,
-              phaseId: `phase-${phases.findIndex(p => p.name === tp.phaseId)}`,
+              phaseId: `phase-${phaseIdx}`,
+              contextId: `context-${contextIdx}`,
+              artifactId: `artifact-${artifactIdx}`,
               emotion: tp.emotion as 'positive' | 'neutral' | 'negative',
-              position,
+              position: { x, y },
             };
           });
           sendEvent('touchpoints', touchpoints);
           break;
         }
         
-        case 'physicalEvidences': {
-          const rawPE = data as Array<{ touchpointId: string; type: string; description: string }>;
-          physicalEvidences = rawPE.map((pe, idx) => ({
-            ...pe,
-            id: `pe-${idx}`,
-            type: pe.type as 'digital' | 'physical' | 'human',
-          }));
-          sendEvent('physicalEvidences', physicalEvidences);
-          break;
-        }
-        
-        case 'userActions': {
-          const rawUA = data as Array<{ touchpointId: string; description: string; thoughts: string; feelings: string }>;
-          userActions = rawUA.map((ua, idx) => ({
-            ...ua,
-            id: `ua-${idx}`,
-          }));
-          sendEvent('userActions', userActions);
-          break;
-        }
-        
         case 'suggestedConnections': {
-          const rawConns = data as Array<{ fromIndex: number; toIndex: number }>;
+          const rawConns = data as Array<{ fromIndex: number; toIndex: number; label: string }>;
           connections = rawConns.map((conn, idx) => ({
             id: `conn-${idx}`,
             fromTouchpointId: `tp-${conn.fromIndex}`,
             toTouchpointId: `tp-${conn.toIndex}`,
+            label: conn.label,
           }));
           sendEvent('connections', connections);
           break;
         }
         
         case 'complete': {
-          // 최종 Journey 객체 전송
           const now = new Date().toISOString();
           const journey: Journey = {
             id: journeyId,
             title: title || 'New Journey Map',
             description: `${scenario.substring(0, 100)}...`,
             scenario,
-            actors,
             phases,
+            contexts,
+            artifacts,
             touchpoints,
-            physicalEvidences,
-            userActions,
             connections,
             createdAt: now,
             updatedAt: now,
