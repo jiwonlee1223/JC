@@ -1,30 +1,130 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Map, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ScenarioInput } from './components/ScenarioInput';
 import { JourneyMap } from './components/JourneyMap';
 import { JourneyDetails } from './components/JourneyDetails';
-import { createJourney, updateJourney } from './api/journey';
-import type { Journey } from './types/journey';
+import { StreamingProgress } from './components/StreamingProgress';
+import { updateJourney } from './api/journey';
+import { createJourneyStream } from './api/journey-stream';
+import type { Journey, Actor, Phase, Touchpoint, Connection } from './types/journey';
+
+// 점진적으로 빌드되는 Journey 상태
+interface PartialJourney {
+  id?: string;
+  title?: string;
+  actors: Actor[];
+  phases: Phase[];
+  touchpoints: Touchpoint[];
+  connections: Connection[];
+}
+
+// 스트리밍 진행 상태
+interface StreamingState {
+  isStreaming: boolean;
+  completedSteps: string[];
+  currentStep: string | null;
+}
 
 function App() {
   const [journey, setJourney] = useState<Journey | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [partialJourney, setPartialJourney] = useState<PartialJourney | null>(null);
+  const [streamingState, setStreamingState] = useState<StreamingState>({
+    isStreaming: false,
+    completedSteps: [],
+    currentStep: null,
+  });
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  const handleSubmit = async (scenario: string, title?: string) => {
-    setIsLoading(true);
+  const handleSubmit = useCallback(async (scenario: string, title?: string) => {
     setError(null);
+    setJourney(null);
+    setPartialJourney({
+      actors: [],
+      phases: [],
+      touchpoints: [],
+      connections: [],
+    });
+    setStreamingState({
+      isStreaming: true,
+      completedSteps: [],
+      currentStep: 'actors',
+    });
 
     try {
-      const newJourney = await createJourney({ scenario, title });
-      setJourney(newJourney);
+      await createJourneyStream(scenario, title, {
+        onStart: (data) => {
+          setPartialJourney(prev => prev ? {
+            ...prev,
+            id: data.journeyId,
+            title: data.title,
+          } : null);
+        },
+        
+        onActors: (actors) => {
+          setPartialJourney(prev => prev ? { ...prev, actors } : null);
+          setStreamingState(prev => ({
+            ...prev,
+            completedSteps: [...prev.completedSteps, 'actors'],
+            currentStep: 'phases',
+          }));
+        },
+        
+        onPhases: (phases) => {
+          setPartialJourney(prev => prev ? { ...prev, phases } : null);
+          setStreamingState(prev => ({
+            ...prev,
+            completedSteps: [...prev.completedSteps, 'phases'],
+            currentStep: 'touchpoints',
+          }));
+        },
+        
+        onTouchpoints: (touchpoints) => {
+          setPartialJourney(prev => prev ? { ...prev, touchpoints } : null);
+          setStreamingState(prev => ({
+            ...prev,
+            completedSteps: [...prev.completedSteps, 'touchpoints'],
+            currentStep: 'connections',
+          }));
+        },
+        
+        onConnections: (connections) => {
+          setPartialJourney(prev => prev ? { ...prev, connections } : null);
+          setStreamingState(prev => ({
+            ...prev,
+            completedSteps: [...prev.completedSteps, 'connections'],
+            currentStep: 'complete',
+          }));
+        },
+        
+        onComplete: (completeJourney) => {
+          setJourney(completeJourney);
+          setPartialJourney(null);
+          setStreamingState({
+            isStreaming: false,
+            completedSteps: [],
+            currentStep: null,
+          });
+        },
+        
+        onError: (err) => {
+          setError(err.message);
+          setStreamingState({
+            isStreaming: false,
+            completedSteps: [],
+            currentStep: null,
+          });
+        },
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create journey');
-    } finally {
-      setIsLoading(false);
+      setStreamingState({
+        isStreaming: false,
+        completedSteps: [],
+        currentStep: null,
+      });
     }
-  };
+  }, []);
 
   const handleJourneyUpdate = async (updatedJourney: Journey) => {
     try {
@@ -34,6 +134,21 @@ function App() {
       console.error('Journey update failed:', err);
     }
   };
+
+  // 현재 표시할 데이터 (완료된 Journey 또는 부분 Journey)
+  const displayData = journey || (partialJourney && {
+    ...partialJourney,
+    id: partialJourney.id || 'temp',
+    title: partialJourney.title || 'Generating...',
+    description: '',
+    scenario: '',
+    physicalEvidences: [],
+    userActions: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  } as Journey);
+
+  const isLoading = streamingState.isStreaming;
 
   return (
     <div className="h-screen w-screen flex overflow-hidden bg-gray-100">
@@ -54,12 +169,21 @@ function App() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-gray-800">Journey Creator</h1>
+              <p className="text-xs text-gray-500">User Journey Map Automation</p>
             </div>
           </div>
 
           {/* Sidebar Content */}
           <div className="flex-1 overflow-y-auto p-4">
             <ScenarioInput onSubmit={handleSubmit} isLoading={isLoading} />
+
+            {/* Streaming Progress */}
+            {streamingState.isStreaming && (
+              <StreamingProgress
+                completedSteps={streamingState.completedSteps}
+                currentStep={streamingState.currentStep}
+              />
+            )}
 
             {/* Error Message */}
             {error && (
@@ -89,8 +213,11 @@ function App() {
 
       {/* Main Content - Full Screen React Flow */}
       <main className="flex-1 relative">
-        {journey ? (
-          <JourneyMap journey={journey} onJourneyUpdate={handleJourneyUpdate} />
+        {displayData ? (
+          <JourneyMap 
+            journey={displayData} 
+            onJourneyUpdate={handleJourneyUpdate} 
+          />
         ) : (
           <div className="h-full flex items-center justify-center bg-gray-50">
             <div className="text-center">

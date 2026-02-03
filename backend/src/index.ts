@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import journeyRouter from './routes/journey.js';
+import journeyStreamRouter from './routes/journey-stream.js';
 
 // 환경 변수 로드
 dotenv.config();
@@ -18,6 +19,7 @@ app.use(express.json());
 
 // 라우트
 app.use('/api/journeys', journeyRouter);
+app.use('/api/journeys', journeyStreamRouter);
 
 // 헬스 체크
 app.get('/api/health', (_req, res) => {
