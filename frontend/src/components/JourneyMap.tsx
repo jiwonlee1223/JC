@@ -18,7 +18,7 @@ import '@xyflow/react/dist/style.css';
 import TouchpointNode from './nodes/TouchpointNode';
 import PhaseLabelNode from './nodes/PhaseLabelNode';
 import ContextLabelNode from './nodes/ContextLabelNode';
-import type { Journey, Touchpoint } from '../types/journey';
+import type { Journey, Touchpoint, Phase, Context } from '../types/journey';
 
 // 커스텀 노드 타입 등록
 const nodeTypes = {
@@ -26,6 +26,62 @@ const nodeTypes = {
   phaseLabel: PhaseLabelNode,
   contextLabel: ContextLabelNode,
 };
+
+// 동적 간격 계산 상수
+const MIN_PHASE_WIDTH = 160;   // Phase 최소 너비
+const MIN_CONTEXT_HEIGHT = 120; // Context 최소 높이
+const CHAR_WIDTH = 8;          // 글자당 예상 너비 (px)
+const LINE_HEIGHT = 24;        // 줄 높이 (px)
+const PHASE_PADDING = 60;      // Phase 간 여백
+const CONTEXT_PADDING = 40;    // Context 간 여백
+const LABEL_OFFSET_X = 160;    // 레이블 영역 X 오프셋
+const LABEL_OFFSET_Y = 80;     // 레이블 영역 Y 오프셋
+
+// Phase 너비 계산 (텍스트 길이 기반)
+function calculatePhaseWidth(phase: Phase): number {
+  const nameWidth = phase.name.length * CHAR_WIDTH + 40;
+  const durationWidth = phase.duration ? phase.duration.length * 6 + 20 : 0;
+  return Math.max(MIN_PHASE_WIDTH, nameWidth + durationWidth);
+}
+
+// Context 높이 계산 (텍스트 길이 기반)
+function calculateContextHeight(context: Context): number {
+  const nameLines = Math.ceil(context.name.length / 15); // 약 15자당 1줄
+  const descLines = context.description ? Math.ceil(context.description.length / 20) : 0;
+  const totalLines = nameLines + descLines;
+  return Math.max(MIN_CONTEXT_HEIGHT, totalLines * LINE_HEIGHT + 40);
+}
+
+// 누적 위치 계산
+interface LayoutInfo {
+  phasePositions: number[];   // 각 Phase의 X 시작 위치
+  phaseWidths: number[];      // 각 Phase의 너비
+  contextPositions: number[]; // 각 Context의 Y 시작 위치
+  contextHeights: number[];   // 각 Context의 높이
+}
+
+function calculateLayout(phases: Phase[], contexts: Context[]): LayoutInfo {
+  const phaseWidths = phases.map(calculatePhaseWidth);
+  const contextHeights = contexts.map(calculateContextHeight);
+  
+  // 누적 X 위치 계산
+  const phasePositions: number[] = [];
+  let currentX = LABEL_OFFSET_X;
+  phaseWidths.forEach((width) => {
+    phasePositions.push(currentX);
+    currentX += width + PHASE_PADDING;
+  });
+  
+  // 누적 Y 위치 계산
+  const contextPositions: number[] = [];
+  let currentY = LABEL_OFFSET_Y;
+  contextHeights.forEach((height) => {
+    contextPositions.push(currentY);
+    currentY += height + CONTEXT_PADDING;
+  });
+  
+  return { phasePositions, phaseWidths, contextPositions, contextHeights };
+}
 
 interface TouchpointNodeData extends Touchpoint {
   contextColor?: string;
@@ -50,28 +106,36 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
     return new Map(journey.artifacts.map(a => [a.id, a]));
   }, [journey.artifacts]);
 
+  // 동적 레이아웃 계산
+  const layout = useMemo(() => {
+    return calculateLayout(journey.phases, journey.contexts);
+  }, [journey.phases, journey.contexts]);
+
   // 모든 노드 생성
   const buildNodes = useCallback((): Node[] => {
     const nodes: Node[] = [];
+    const cellCurrentCounts = new Map<string, number>();
 
-    // Phase 레이블 노드 (상단) - 컴팩트 모드 기준 간격
+    // Phase 레이블 노드 (상단) - 동적 위치
     journey.phases.forEach((phase, idx) => {
+      const x = layout.phasePositions[idx] ?? (idx * 200 + LABEL_OFFSET_X);
       nodes.push({
         id: `phase-label-${phase.id}`,
         type: 'phaseLabel',
-        position: { x: idx * 200 + 160, y: 20 },
+        position: { x, y: 20 },
         data: { name: phase.name, duration: phase.duration },
         draggable: false,
         selectable: false,
       });
     });
 
-    // Context 레이블 노드 (좌측) - 컴팩트 모드 기준 간격
+    // Context 레이블 노드 (좌측) - 동적 위치
     journey.contexts.forEach((context, idx) => {
+      const y = layout.contextPositions[idx] ?? (idx * 150 + LABEL_OFFSET_Y);
       nodes.push({
         id: `context-label-${context.id}`,
         type: 'contextLabel',
-        position: { x: 20, y: idx * 150 + 100 },
+        position: { x: 20, y },
         data: { 
           name: context.name, 
           description: context.description,
@@ -83,7 +147,7 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
     });
 
     // Touchpoint 노드
-    journey.touchpoints.forEach((tp, idx) => {
+    journey.touchpoints.forEach((tp) => {
       const context = contextMap.get(tp.contextId);
       const artifact = artifactMap.get(tp.artifactId);
       
@@ -92,10 +156,18 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
       // phaseId에서 인덱스 추출 (phase-0 → 0)
       const phaseIdx = tp.phaseId ? parseInt(tp.phaseId.replace('phase-', '')) || 0 : 0;
       
-      // 위치가 없거나 잘못된 경우 계산 (컴팩트 모드 기준 간격)
-      const position = tp.position && tp.position.x !== undefined && tp.position.y !== undefined
-        ? tp.position
-        : { x: phaseIdx * 200 + 180, y: contextIdx * 150 + 120 };
+      // 셀 내 오프셋 계산 (같은 셀에 여러 노드가 있을 때)
+      const cellKey = `${contextIdx}-${phaseIdx}`;
+      const cellOffset = cellCurrentCounts.get(cellKey) || 0;
+      cellCurrentCounts.set(cellKey, cellOffset + 1);
+      
+      // 동적 위치 계산
+      const baseX = layout.phasePositions[phaseIdx] ?? (phaseIdx * 200 + LABEL_OFFSET_X);
+      const baseY = layout.contextPositions[contextIdx] ?? (contextIdx * 150 + LABEL_OFFSET_Y);
+      const position = { 
+        x: baseX + 20 + (cellOffset * 40),  // 셀 내 오프셋 적용
+        y: baseY + 20 
+      };
       
       const nodeData: TouchpointNodeData = {
         ...tp,
@@ -114,7 +186,7 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
     });
 
     return nodes;
-  }, [journey.phases, journey.contexts, journey.touchpoints, contextMap, artifactMap]);
+  }, [journey.phases, journey.contexts, journey.touchpoints, contextMap, artifactMap, layout]);
 
   // Connection을 Edge로 변환
   const buildEdges = useCallback((): Edge[] => {
