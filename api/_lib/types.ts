@@ -1,10 +1,10 @@
 // User (행위자) - 작업자, AGV, 시스템 등
 export interface User {
   id: string;
-  name: string;           // "작업자 A", "AGV-01"
+  name: string;
   type: 'human' | 'robot' | 'system' | 'other';
-  color: string;          // 고유 색상 "#3b82f6"
-  description?: string;   // 역할 설명
+  color: string;
+  description?: string;
 }
 
 // Phase (시간축)
@@ -26,12 +26,12 @@ export interface Context {
 // Node = User의 특정 시점 상태
 export interface JourneyNode {
   id: string;
-  userId: string;         // 어떤 User인지
-  phaseId: string;        // 어느 Phase에
-  contextId: string;      // 어느 Context에
-  action: string;         // 무엇을 하는지
+  userId: string;
+  phaseId: string;
+  contextId: string;
+  action: string;
   emotion: 'positive' | 'neutral' | 'negative';
-  emotionScore: number;   // -1 ~ 1
+  emotionScore: number;
   painPoint?: string;
   opportunity?: string;
   position?: { x: number; y: number };
@@ -42,7 +42,7 @@ export interface JourneyEdge {
   id: string;
   fromNodeId: string;
   toNodeId: string;
-  description: string;    // "~를 하기 위해 ~로 이동함"
+  description: string;
 }
 
 // 접점 = 여러 User가 만나는 지점
@@ -50,8 +50,8 @@ export interface Intersection {
   id: string;
   phaseId: string;
   contextId: string;
-  nodeIds: string[];      // 만나는 Node들의 ID
-  description?: string;   // 접점에서 일어나는 상호작용
+  nodeIds: string[];
+  description?: string;
 }
 
 // Journey = 전체 그래프
@@ -76,38 +76,29 @@ export interface CreateJourneyRequest {
   title?: string;
 }
 
+// API 응답 타입
+export interface CreateJourneyResponse {
+  success: boolean;
+  journey?: Journey;
+  error?: string;
+}
+
 // GPT 추출 결과 타입
 export interface ExtractionResult {
-  users: Array<{
-    name: string;
-    type: string;
-    description: string;
-  }>;
-  phases: Array<{
-    name: string;
-    order: number;
-    duration: string;
-  }>;
-  contexts: Array<{
-    name: string;
-    description: string;
-    order: number;
-  }>;
+  users: Array<{ name: string; type: string; description: string }>;
+  phases: Array<{ name: string; order: number; duration: string }>;
+  contexts: Array<{ name: string; description: string; order: number }>;
   nodes: Array<{
-    userName: string;       // User 이름으로 매칭
-    phaseName: string;      // Phase 이름으로 매칭
-    contextName: string;    // Context 이름으로 매칭
+    userName: string;
+    phaseName: string;
+    contextName: string;
     action: string;
     emotion: string;
     emotionScore: number;
     painPoint: string;
     opportunity: string;
   }>;
-  edges: Array<{
-    fromNodeIndex: number;  // nodes 배열의 인덱스
-    toNodeIndex: number;
-    description: string;
-  }>;
+  edges: Array<{ fromNodeIndex: number; toNodeIndex: number; description: string }>;
   intersections: Array<{
     phaseName: string;
     contextName: string;
