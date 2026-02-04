@@ -6,8 +6,6 @@ import {
   MiniMap,
   useNodesState,
   useEdgesState,
-  addEdge,
-  reconnectEdge,
   type Connection,
   type Edge,
   type Node,

@@ -131,3 +131,4 @@ export const subscribeToCollection = <T>(
 
 // 쿼리 헬퍼 (재export)
 export { where, orderBy, limit, serverTimestamp };
+export type { QueryConstraint };

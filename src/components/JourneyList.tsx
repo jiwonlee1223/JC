@@ -38,7 +38,7 @@ export const JourneyList = ({ userId, currentJourneyId, onSelect }: JourneyListP
 
     setDeletingId(journeyId);
     try {
-      await deleteJourneyFromFirestore(journeyId);
+      await deleteJourneyFromFirestore(userId, journeyId);
     } catch (err) {
       console.error('Failed to delete journey:', err);
       setError('Failed to delete journey');
