@@ -29,7 +29,7 @@ export async function extractJourneyElementsStream(
   const openai = getOpenAIClient();
 
   const stream = await openai.responses.create({
-    model: 'gpt-4o',
+    model: 'gpt-5.2',
     stream: true,
     input: [
       { role: 'developer', content: EXTRACTION_SYSTEM_PROMPT },

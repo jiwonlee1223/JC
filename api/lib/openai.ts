@@ -27,7 +27,7 @@ export async function extractJourneyElements(scenario: string): Promise<Extracti
   const openai = getOpenAIClient();
   
   const response = await openai.responses.create({
-    model: 'gpt-4o',
+    model: 'gpt-5.2',
     input: [
       { role: 'developer', content: EXTRACTION_SYSTEM_PROMPT },
       { role: 'user', content: `다음 시나리오를 분석하여 사용자 여정 지도 요소를 추출해주세요:\n\n${scenario}` },
