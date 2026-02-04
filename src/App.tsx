@@ -1,12 +1,17 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Map, ChevronLeft, ChevronRight, Undo2, Redo2 } from 'lucide-react';
+import { Map, ChevronLeft, ChevronRight, LogIn, LogOut, User as UserIcon } from 'lucide-react';
 import { ScenarioInput } from './components/ScenarioInput';
 import { JourneyMap } from './components/JourneyMap';
 import { JourneyDetails } from './components/JourneyDetails';
 import { StreamingProgress } from './components/StreamingProgress';
+import { AuthModal } from './components/AuthModal';
+import { JourneyToolbar } from './components/JourneyToolbar';
 import { updateJourney } from './api/journey';
 import { createJourneyStream } from './api/journey-stream';
 import { useHistory } from './hooks/useHistory';
+import { useAuth } from './hooks/useAuth';
+import { signOut } from './lib/auth';
+import { saveJourney, updateJourneyInFirestore } from './lib/journey-service';
 import type { Journey, User, Phase, Context, JourneyNode, JourneyConnector, Intersection } from './types/journey';
 
 // 점진적으로 빌드되는 Journey 상태
@@ -29,6 +34,10 @@ interface StreamingState {
 }
 
 function App() {
+  // 인증 상태
+  const { user, loading: authLoading } = useAuth();
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
   // History 관리를 통한 Undo/Redo 지원
   const {
     state: journey,
@@ -48,6 +57,37 @@ function App() {
   });
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Sign out handler
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      setWithoutHistory(null); // Clear journey on sign out
+    } catch (err) {
+      console.error('Sign out failed:', err);
+    }
+  };
+
+  // Save journey to Firestore
+  const handleSaveJourney = useCallback(async () => {
+    if (!journey || !user) return;
+    
+    setSaving(true);
+    try {
+      await saveJourney(user.uid, journey);
+    } catch (err) {
+      console.error('Failed to save journey:', err);
+      setError('Failed to save journey');
+    } finally {
+      setSaving(false);
+    }
+  }, [journey, user]);
+
+  // Load journey from list
+  const handleLoadJourney = useCallback((selectedJourney: Journey) => {
+    setWithoutHistory(selectedJourney);
+  }, [setWithoutHistory]);
 
   const handleSubmit = useCallback(async (scenario: string, title?: string) => {
     setError(null);
@@ -130,7 +170,7 @@ function App() {
           }));
         },
         
-        onComplete: (completeJourney) => {
+        onComplete: async (completeJourney) => {
           setWithoutHistory(completeJourney); // 새 Journey는 히스토리 없이 시작
           setPartialJourney(null);
           setStreamingState({
@@ -138,6 +178,15 @@ function App() {
             completedSteps: [],
             currentStep: null,
           });
+          
+          // Auto-save to Firestore if user is logged in
+          if (user) {
+            try {
+              await saveJourney(user.uid, completeJourney);
+            } catch (err) {
+              console.error('Auto-save failed:', err);
+            }
+          }
         },
         
         onError: (err) => {
@@ -167,10 +216,15 @@ function App() {
     // 백그라운드에서 서버에 저장
     try {
       await updateJourney(updatedJourney.id, updatedJourney);
+      
+      // Also save to Firestore if user is logged in
+      if (user) {
+        await updateJourneyInFirestore(user.uid, updatedJourney.id, updatedJourney);
+      }
     } catch (err) {
       console.error('Journey update failed:', err);
     }
-  }, [setJourney]);
+  }, [setJourney, user]);
 
   // 현재 표시할 데이터
   const displayData = journey || (partialJourney && {
@@ -219,13 +273,53 @@ function App() {
       >
         <div className="w-96 h-full flex flex-col">
           {/* Sidebar Header */}
-          <div className="p-4 border-b border-gray-200 flex items-center gap-3">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <Map className="w-5 h-5 text-primary-600" />
+          <div className="p-4 border-b border-gray-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary-100 rounded-lg">
+                <Map className="w-5 h-5 text-primary-600" />
+              </div>
+              <div className="flex-1">
+                <h1 className="text-lg font-bold text-gray-800">Journey Creator</h1>
+                <p className="text-xs text-gray-500">User Journey Map Automation</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-lg font-bold text-gray-800">Journey Creator</h1>
-              <p className="text-xs text-gray-500">User Journey Map Automation</p>
+            
+            {/* Auth section */}
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              {authLoading ? (
+                <div className="text-sm text-gray-400">Loading...</div>
+              ) : user ? (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
+                      <UserIcon className="w-4 h-4 text-primary-600" />
+                    </div>
+                    <div className="text-sm">
+                      <p className="font-medium text-gray-700 truncate max-w-[180px]">
+                        {user.displayName || user.email?.split('@')[0]}
+                      </p>
+                      <p className="text-xs text-gray-400 truncate max-w-[180px]">
+                        {user.email}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
+                    title="Sign Out"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setAuthModalOpen(true)}
+                  className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-primary-50 text-primary-600 font-medium rounded-lg hover:bg-primary-100 transition"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Sign In
+                </button>
+              )}
             </div>
           </div>
 
@@ -269,37 +363,20 @@ function App() {
 
       {/* Main Content - Full Screen React Flow */}
       <main className="flex-1 relative">
-        {/* Undo/Redo 툴바 */}
-        {displayData && !streamingState.isStreaming && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-white rounded-lg shadow-md border border-gray-200 p-1">
-            <button
-              onClick={undo}
-              disabled={!canUndo}
-              className={`
-                p-2 rounded-md transition-colors
-                ${canUndo 
-                  ? 'text-gray-700 hover:bg-gray-100' 
-                  : 'text-gray-300 cursor-not-allowed'}
-              `}
-              title="Undo (Ctrl+Z)"
-            >
-              <Undo2 className="w-4 h-4" />
-            </button>
-            <div className="w-px h-6 bg-gray-200" />
-            <button
-              onClick={redo}
-              disabled={!canRedo}
-              className={`
-                p-2 rounded-md transition-colors
-                ${canRedo 
-                  ? 'text-gray-700 hover:bg-gray-100' 
-                  : 'text-gray-300 cursor-not-allowed'}
-              `}
-              title="Redo (Ctrl+Y)"
-            >
-              <Redo2 className="w-4 h-4" />
-            </button>
-          </div>
+        {/* Toolbar - always show when logged in or has journey */}
+        {(user || displayData) && !streamingState.isStreaming && (
+          <JourneyToolbar
+            userId={user?.uid}
+            currentJourneyId={journey?.id}
+            hasJourney={!!displayData}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            saving={saving}
+            onUndo={undo}
+            onRedo={redo}
+            onSave={handleSaveJourney}
+            onSelectJourney={handleLoadJourney}
+          />
         )}
 
         {displayData ? (
@@ -323,6 +400,13 @@ function App() {
           </div>
         )}
       </main>
+
+      {/* 로그인 모달 */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={() => setAuthModalOpen(false)}
+      />
     </div>
   );
 }

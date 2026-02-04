@@ -27,7 +27,7 @@ export function ScenarioInput({ onSubmit, isLoading }: ScenarioInputProps) {
 오후 작업 후 슈트를 반납하고 작업 리포트를 시스템에 제출합니다.`;
 
   return (
-    <div className="bg-gray-50 rounded-lg p-4">
+    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
       <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
         <Sparkles className="w-5 h-5 text-primary-500" />
         Scenario Input
