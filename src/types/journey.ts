@@ -37,8 +37,8 @@ export interface JourneyNode {
   position?: { x: number; y: number };
 }
 
-// Edge = Node 간 이동/전환
-export interface JourneyEdge {
+// Connector = Node 간 이동/전환
+export interface JourneyConnector {
   id: string;
   fromNodeId: string;
   toNodeId: string;
@@ -64,7 +64,7 @@ export interface Journey {
   phases: Phase[];
   contexts: Context[];
   nodes: JourneyNode[];
-  edges: JourneyEdge[];
+  connectors: JourneyConnector[];
   intersections: Intersection[];
   createdAt: string;
   updatedAt: string;

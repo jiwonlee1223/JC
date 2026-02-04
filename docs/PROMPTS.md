@@ -26,7 +26,7 @@
 2. **phases**: 시간 단계 (name, order, duration)
 3. **contexts**: 공간/환경 (name, description, order)
 4. **nodes**: 각 User의 특정 시점 상태 (userName, phaseName, contextName, action, emotion, emotionScore, painPoint, opportunity)
-5. **edges**: Node 간 이동 (fromNodeIndex, toNodeIndex, description)
+5. **connectors**: Node 간 이동/연결 (fromNodeIndex, toNodeIndex, description)
 6. **intersections**: 여러 User가 만나는 접점 (phaseName, contextName, userNames, description)
 
 JSON 형식으로 응답해주세요.
@@ -44,7 +44,7 @@ JSON 형식으로 응답해주세요.
 2. **phases**: 시간 단계 (name, order, duration)
 3. **contexts**: 공간/환경 (name, description, order)
 4. **nodes**: 각 User의 특정 시점 상태
-5. **edges**: Node 간 이동
+5. **connectors**: Node 간 이동/연결
 6. **intersections**: 여러 User가 만나는 접점
 
 JSON 형식으로 응답해주세요.
@@ -127,7 +127,7 @@ GPT에게 정확한 JSON 형식으로 응답하도록 강제하는 스키마입�
         "required": ["userName", "phaseName", "contextName", "action", "emotion", "emotionScore", "painPoint", "opportunity"]
       }
     },
-    "edges": {
+    "connectors": {
       "type": "array",
       "items": {
         "type": "object",
@@ -153,7 +153,7 @@ GPT에게 정확한 JSON 형식으로 응답하도록 강제하는 스키마입�
       }
     }
   },
-  "required": ["users", "phases", "contexts", "nodes", "edges", "intersections"]
+  "required": ["users", "phases", "contexts", "nodes", "connectors", "intersections"]
 }
 ```
 
@@ -206,7 +206,7 @@ GPT에게 정확한 JSON 형식으로 응답하도록 강제하는 스키마입�
 | `painPoint` | string | 불편 사항 | "무거운 부품" |
 | `opportunity` | string | 개선 기회 | "보조 장치 도입" |
 
-### 5. Edges (엣지)
+### 5. Connectors (커넥터)
 
 Node 간 이동/전환 (그래프의 간선)
 
@@ -257,7 +257,7 @@ for (let i = arrayStartIdx; i < accumulatedText.length; i++) {
 ### 순서
 
 ```
-users → phases → contexts → nodes → edges → intersections → complete
+users → phases → contexts → nodes → connectors → intersections → complete
 ```
 
 ---

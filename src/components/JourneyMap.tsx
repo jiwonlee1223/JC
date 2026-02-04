@@ -169,10 +169,10 @@ interface JourneyMapProps {
 export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
   // 노드 삭제 핸들러
   const handleNodeDelete = useCallback((nodeId: string) => {
-    // 해당 노드와 연결된 엣지도 함께 삭제
+    // 해당 노드와 연결된 Connector도 함께 삭제
     const updatedNodes = journey.nodes.filter(n => n.id !== nodeId);
-    const updatedEdges = journey.edges.filter(
-      e => e.fromNodeId !== nodeId && e.toNodeId !== nodeId
+    const updatedConnectors = journey.connectors.filter(
+      c => c.fromNodeId !== nodeId && c.toNodeId !== nodeId
     );
     // Intersection에서도 제거
     const updatedIntersections = journey.intersections.map(i => ({
@@ -183,7 +183,7 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
     onJourneyUpdate({
       ...journey,
       nodes: updatedNodes,
-      edges: updatedEdges,
+      connectors: updatedConnectors,
       intersections: updatedIntersections,
     });
   }, [journey, onJourneyUpdate]);
@@ -200,12 +200,12 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
     });
   }, [journey, onJourneyUpdate]);
 
-  // 엣지 삭제 핸들러
-  const handleEdgeDelete = useCallback((edgeId: string) => {
-    const updatedEdges = journey.edges.filter(e => e.id !== edgeId);
+  // Connector 삭제 핸들러
+  const handleConnectorDelete = useCallback((connectorId: string) => {
+    const updatedConnectors = journey.connectors.filter(c => c.id !== connectorId);
     onJourneyUpdate({
       ...journey,
-      edges: updatedEdges,
+      connectors: updatedConnectors,
     });
   }, [journey, onJourneyUpdate]);
   // User 맵 생성
@@ -395,24 +395,24 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
     return nodes;
   }, [journey.phases, journey.contexts, journey.intersections, cellGroups, intersectionCells, userMap, layout, handleNodeDelete, handleNodeUpdate]);
 
-  // Edge를 ReactFlow Edge로 변환
-  const buildEdges = useCallback((): Edge[] => {
-    return journey.edges.map((jEdge) => {
+  // Connector를 ReactFlow 형식으로 변환
+  const buildConnectors = useCallback((): Edge[] => {
+    return journey.connectors.map((connector) => {
       // fromNode의 User 색상 가져오기
-      const fromNode = journey.nodes.find(n => n.id === jEdge.fromNodeId);
+      const fromNode = journey.nodes.find(n => n.id === connector.fromNodeId);
       const user = fromNode ? userMap.get(fromNode.userId) : null;
-      const edgeColor = user?.color || '#6b7280';
+      const connectorColor = user?.color || '#6b7280';
 
       return {
-        id: jEdge.id,
-        source: jEdge.fromNodeId,
-        target: jEdge.toNodeId,
-        label: jEdge.description,
+        id: connector.id,
+        source: connector.fromNodeId,
+        target: connector.toNodeId,
+        label: connector.description,
         type: 'default',  // Bezier 곡선
         animated: true,
-        reconnectable: true, // 엣지 재연결 허용
+        reconnectable: true, // Connector 재연결 허용
         style: { 
-          stroke: edgeColor, 
+          stroke: connectorColor, 
           strokeWidth: 2,
           strokeLinecap: 'round',
         },
@@ -422,32 +422,32 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
         labelBgBorderRadius: 4,
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: edgeColor,
+          color: connectorColor,
         },
       };
     });
-  }, [journey.edges, journey.nodes, userMap]);
+  }, [journey.connectors, journey.nodes, userMap]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes());
-  const [edges, setEdges, onEdgesChange] = useEdgesState(buildEdges());
+  const [rfConnectors, setRfConnectors, onConnectorsChange] = useEdgesState(buildConnectors());
 
-  // journey가 변경되면 노드/엣지 업데이트
+  // journey가 변경되면 노드/Connector 업데이트
   useEffect(() => {
     setNodes(buildNodes());
-    setEdges(buildEdges());
-  }, [journey, buildNodes, buildEdges, setNodes, setEdges]);
+    setRfConnectors(buildConnectors());
+  }, [journey, buildNodes, buildConnectors, setNodes, setRfConnectors]);
 
   // 새 연결 생성
   const onConnect = useCallback(
     (params: Connection) => {
       if (!params.source || !params.target) return;
       
-      // 새 엣지 ID 생성
-      const newEdgeId = `edge-${Date.now()}`;
+      // 새 Connector ID 생성
+      const newConnectorId = `connector-${Date.now()}`;
       
-      // Journey에 새 엣지 추가
-      const newJourneyEdge = {
-        id: newEdgeId,
+      // Journey에 새 Connector 추가
+      const newConnector = {
+        id: newConnectorId,
         fromNodeId: params.source,
         toNodeId: params.target,
         description: '',
@@ -455,40 +455,40 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
       
       onJourneyUpdate({
         ...journey,
-        edges: [...journey.edges, newJourneyEdge],
+        connectors: [...journey.connectors, newConnector],
       });
     },
     [journey, onJourneyUpdate]
   );
 
-  // 엣지 재연결
+  // Connector 재연결
   const onReconnect: OnReconnect = useCallback(
     (oldEdge, newConnection) => {
       if (!newConnection.source || !newConnection.target) return;
       
-      // Journey에서 엣지 업데이트
-      const updatedEdges = journey.edges.map(e =>
-        e.id === oldEdge.id
-          ? { ...e, fromNodeId: newConnection.source!, toNodeId: newConnection.target! }
-          : e
+      // Journey에서 Connector 업데이트
+      const updatedConnectors = journey.connectors.map(c =>
+        c.id === oldEdge.id
+          ? { ...c, fromNodeId: newConnection.source!, toNodeId: newConnection.target! }
+          : c
       );
       
       onJourneyUpdate({
         ...journey,
-        edges: updatedEdges,
+        connectors: updatedConnectors,
       });
     },
     [journey, onJourneyUpdate]
   );
 
-  // 엣지 클릭 시 삭제 (더블클릭)
-  const onEdgeDoubleClick = useCallback(
-    (_event: React.MouseEvent, edge: Edge) => {
+  // Connector 클릭 시 삭제 (더블클릭)
+  const onConnectorDoubleClick = useCallback(
+    (_event: React.MouseEvent, connector: Edge) => {
       if (confirm('Delete this connector?')) {
-        handleEdgeDelete(edge.id);
+        handleConnectorDelete(connector.id);
       }
     },
-    [handleEdgeDelete]
+    [handleConnectorDelete]
   );
 
   // 노드 삭제 (Delete 키)
@@ -503,15 +503,15 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
     [handleNodeDelete]
   );
 
-  // 엣지 삭제 (Delete 키)
-  const onEdgesDelete = useCallback(
-    (deletedEdges: Edge[]) => {
-      const deletedIds = new Set(deletedEdges.map(e => e.id));
-      const updatedEdges = journey.edges.filter(e => !deletedIds.has(e.id));
+  // Connector 삭제 (Delete 키)
+  const onConnectorsDelete = useCallback(
+    (deleted: Edge[]) => {
+      const deletedIds = new Set(deleted.map(c => c.id));
+      const updatedConnectors = journey.connectors.filter(c => !deletedIds.has(c.id));
       
       onJourneyUpdate({
         ...journey,
-        edges: updatedEdges,
+        connectors: updatedConnectors,
       });
     },
     [journey, onJourneyUpdate]
@@ -597,15 +597,15 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
     <div className="w-full h-full bg-gray-50">
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={rfConnectors}
         onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
+        onEdgesChange={onConnectorsChange}
         onConnect={onConnect}
         onReconnect={onReconnect}
         onNodeDragStop={onNodeDragStop}
         onNodesDelete={onNodesDelete}
-        onEdgesDelete={onEdgesDelete}
-        onEdgeDoubleClick={onEdgeDoubleClick}
+        onEdgesDelete={onConnectorsDelete}
+        onEdgeDoubleClick={onConnectorDoubleClick}
         nodeTypes={nodeTypes}
         deleteKeyCode={['Backspace', 'Delete']}
         fitView

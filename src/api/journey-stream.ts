@@ -1,7 +1,7 @@
-import type { Journey, User, Phase, Context, JourneyNode, JourneyEdge, Intersection } from '../types/journey';
+import type { Journey, User, Phase, Context, JourneyNode, JourneyConnector, Intersection } from '../types/journey';
 
 export interface StreamEvent {
-  type: 'start' | 'users' | 'phases' | 'contexts' | 'nodes' | 'edges' | 'intersections' | 'complete' | 'error';
+  type: 'start' | 'users' | 'phases' | 'contexts' | 'nodes' | 'connectors' | 'intersections' | 'complete' | 'error';
   data: unknown;
 }
 
@@ -11,7 +11,7 @@ export interface StreamCallbacks {
   onPhases?: (phases: Phase[]) => void;
   onContexts?: (contexts: Context[]) => void;
   onNodes?: (nodes: JourneyNode[]) => void;
-  onEdges?: (edges: JourneyEdge[]) => void;
+  onConnectors?: (connectors: JourneyConnector[]) => void;
   onIntersections?: (intersections: Intersection[]) => void;
   onComplete?: (journey: Journey) => void;
   onError?: (error: { message: string }) => void;
@@ -74,8 +74,8 @@ export async function createJourneyStream(
             case 'nodes':
               callbacks.onNodes?.(event.data as JourneyNode[]);
               break;
-            case 'edges':
-              callbacks.onEdges?.(event.data as JourneyEdge[]);
+            case 'connectors':
+              callbacks.onConnectors?.(event.data as JourneyConnector[]);
               break;
             case 'intersections':
               callbacks.onIntersections?.(event.data as Intersection[]);

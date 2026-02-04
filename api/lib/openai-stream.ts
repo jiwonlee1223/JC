@@ -17,7 +17,7 @@ const EXTRACTION_SYSTEM_PROMPT = `당신은 사용자 여정 지도(User Journey
 2. **phases**: 시간 단계 (name, order, duration)
 3. **contexts**: 공간/환경 (name, description, order)
 4. **nodes**: 각 User의 특정 시점 상태
-5. **edges**: Node 간 이동
+5. **connectors**: Node 간 이동/연결
 6. **intersections**: 여러 User가 만나는 접점
 
 JSON 형식으로 응답해주세요.`;
@@ -46,10 +46,10 @@ export async function extractJourneyElementsStream(
             phases: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, order: { type: 'number' }, duration: { type: 'string' } }, required: ['name', 'order', 'duration'], additionalProperties: false } },
             contexts: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, order: { type: 'number' } }, required: ['name', 'description', 'order'], additionalProperties: false } },
             nodes: { type: 'array', items: { type: 'object', properties: { userName: { type: 'string' }, phaseName: { type: 'string' }, contextName: { type: 'string' }, action: { type: 'string' }, emotion: { type: 'string', enum: ['positive', 'neutral', 'negative'] }, emotionScore: { type: 'number' }, painPoint: { type: 'string' }, opportunity: { type: 'string' } }, required: ['userName', 'phaseName', 'contextName', 'action', 'emotion', 'emotionScore', 'painPoint', 'opportunity'], additionalProperties: false } },
-            edges: { type: 'array', items: { type: 'object', properties: { fromNodeIndex: { type: 'number' }, toNodeIndex: { type: 'number' }, description: { type: 'string' } }, required: ['fromNodeIndex', 'toNodeIndex', 'description'], additionalProperties: false } },
+            connectors: { type: 'array', items: { type: 'object', properties: { fromNodeIndex: { type: 'number' }, toNodeIndex: { type: 'number' }, description: { type: 'string' } }, required: ['fromNodeIndex', 'toNodeIndex', 'description'], additionalProperties: false } },
             intersections: { type: 'array', items: { type: 'object', properties: { phaseName: { type: 'string' }, contextName: { type: 'string' }, userNames: { type: 'array', items: { type: 'string' } }, description: { type: 'string' } }, required: ['phaseName', 'contextName', 'userNames', 'description'], additionalProperties: false } },
           },
-          required: ['users', 'phases', 'contexts', 'nodes', 'edges', 'intersections'],
+          required: ['users', 'phases', 'contexts', 'nodes', 'connectors', 'intersections'],
           additionalProperties: false,
         },
       },
@@ -58,7 +58,7 @@ export async function extractJourneyElementsStream(
 
   let accumulatedText = '';
   const extractedKeys = new Set<string>();
-  const keyOrder = ['users', 'phases', 'contexts', 'nodes', 'edges', 'intersections'];
+  const keyOrder = ['users', 'phases', 'contexts', 'nodes', 'connectors', 'intersections'];
 
   for await (const event of stream) {
     if (event.type === 'response.output_text.delta') {

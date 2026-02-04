@@ -10,7 +10,7 @@ const STEPS = [
   { id: 'phases', label: 'Phases' },
   { id: 'contexts', label: 'Contexts' },
   { id: 'nodes', label: 'Nodes' },
-  { id: 'edges', label: 'Edges' },
+  { id: 'connectors', label: 'Connectors' },
   { id: 'intersections', label: 'Intersections' },
   { id: 'complete', label: 'Complete' },
 ];

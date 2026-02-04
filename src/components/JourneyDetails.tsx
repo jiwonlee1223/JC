@@ -168,10 +168,10 @@ export function JourneyDetails({ journey }: JourneyDetailsProps) {
         </div>
       )}
 
-      {/* Edges (동선) */}
+      {/* Connectors (동선) */}
       <div className="mt-4">
-        <h4 className="text-sm font-medium text-gray-700 mb-2">Edges (Movements)</h4>
-        <p className="text-sm text-gray-600">{journey.edges.length} connections</p>
+        <h4 className="text-sm font-medium text-gray-700 mb-2">Connectors (Movements)</h4>
+        <p className="text-sm text-gray-600">{journey.connectors.length} connections</p>
       </div>
     </div>
   );

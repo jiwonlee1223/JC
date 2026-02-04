@@ -7,7 +7,7 @@ import { StreamingProgress } from './components/StreamingProgress';
 import { updateJourney } from './api/journey';
 import { createJourneyStream } from './api/journey-stream';
 import { useHistory } from './hooks/useHistory';
-import type { Journey, User, Phase, Context, JourneyNode, JourneyEdge, Intersection } from './types/journey';
+import type { Journey, User, Phase, Context, JourneyNode, JourneyConnector, Intersection } from './types/journey';
 
 // 점진적으로 빌드되는 Journey 상태
 interface PartialJourney {
@@ -17,7 +17,7 @@ interface PartialJourney {
   phases: Phase[];
   contexts: Context[];
   nodes: JourneyNode[];
-  edges: JourneyEdge[];
+  connectors: JourneyConnector[];
   intersections: Intersection[];
 }
 
@@ -57,7 +57,7 @@ function App() {
       phases: [],
       contexts: [],
       nodes: [],
-      edges: [],
+      connectors: [],
       intersections: [],
     });
     setStreamingState({
@@ -108,15 +108,15 @@ function App() {
           setStreamingState(prev => ({
             ...prev,
             completedSteps: [...prev.completedSteps, 'nodes'],
-            currentStep: 'edges',
+            currentStep: 'connectors',
           }));
         },
         
-        onEdges: (edges) => {
-          setPartialJourney(prev => prev ? { ...prev, edges } : null);
+        onConnectors: (connectors) => {
+          setPartialJourney(prev => prev ? { ...prev, connectors } : null);
           setStreamingState(prev => ({
             ...prev,
-            completedSteps: [...prev.completedSteps, 'edges'],
+            completedSteps: [...prev.completedSteps, 'connectors'],
             currentStep: 'intersections',
           }));
         },

@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { v4 as uuidv4 } from 'uuid';
 import { extractJourneyElements } from '../lib/openai.js';
 import { USER_COLORS, findIndexByName, calculateLayout, calculateCircularPosition, CIRCULAR_RADIUS, MIN_PHASE_WIDTH, MIN_CONTEXT_HEIGHT, LABEL_OFFSET_X, LABEL_OFFSET_Y } from '../lib/journey-utils.js';
-import type { Journey, User, Phase, Context, JourneyNode, JourneyEdge, Intersection, CreateJourneyRequest, CreateJourneyResponse } from '../lib/types.js';
+import type { Journey, User, Phase, Context, JourneyNode, JourneyConnector, Intersection, CreateJourneyRequest, CreateJourneyResponse } from '../lib/types.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -50,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return { ...n, id: `node-${idx}`, userId: `user-${userIdx}`, phaseId: `phase-${phaseIdx}`, contextId: `context-${contextIdx}`, emotion: n.emotion as JourneyNode['emotion'], position: { x: circularPos.x - 60, y: circularPos.y - 30 } };
       });
 
-      const edges: JourneyEdge[] = extracted.edges.map((e, idx) => ({ id: `edge-${idx}`, fromNodeId: `node-${e.fromNodeIndex}`, toNodeId: `node-${e.toNodeIndex}`, description: e.description }));
+      const connectors: JourneyConnector[] = extracted.connectors.map((c, idx) => ({ id: `connector-${idx}`, fromNodeId: `node-${c.fromNodeIndex}`, toNodeId: `node-${c.toNodeIndex}`, description: c.description }));
 
       const intersections: Intersection[] = extracted.intersections.map((i, idx) => {
         const phaseIdx = findIndexByName(phases, i.phaseName);
@@ -60,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
       const now = new Date().toISOString();
-      const journey: Journey = { id: uuidv4(), title: request.title || 'New Journey Map', description: `${request.scenario.substring(0, 100)}...`, scenario: request.scenario, users, phases, contexts, nodes, edges, intersections, createdAt: now, updatedAt: now };
+      const journey: Journey = { id: uuidv4(), title: request.title || 'New Journey Map', description: `${request.scenario.substring(0, 100)}...`, scenario: request.scenario, users, phases, contexts, nodes, connectors, intersections, createdAt: now, updatedAt: now };
 
       return res.status(201).json({ success: true, journey } as CreateJourneyResponse);
     } catch (error) {
