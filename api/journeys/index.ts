@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { v4 as uuidv4 } from 'uuid';
-import { extractJourneyElements } from '../_lib/openai';
-import { USER_COLORS, findIndexByName, calculateLayout, calculateCircularPosition, CIRCULAR_RADIUS, MIN_PHASE_WIDTH, MIN_CONTEXT_HEIGHT, LABEL_OFFSET_X, LABEL_OFFSET_Y } from '../_lib/journey-utils';
-import type { Journey, User, Phase, Context, JourneyNode, JourneyEdge, Intersection, CreateJourneyRequest, CreateJourneyResponse } from '../_lib/types';
+import { extractJourneyElements } from '../_lib/openai.js';
+import { USER_COLORS, findIndexByName, calculateLayout, calculateCircularPosition, CIRCULAR_RADIUS, MIN_PHASE_WIDTH, MIN_CONTEXT_HEIGHT, LABEL_OFFSET_X, LABEL_OFFSET_Y } from '../_lib/journey-utils.js';
+import type { Journey, User, Phase, Context, JourneyNode, JourneyEdge, Intersection, CreateJourneyRequest, CreateJourneyResponse } from '../_lib/types.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');

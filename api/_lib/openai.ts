@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { ExtractionResult } from './types';
+import type { ExtractionResult } from './types.js';
 
 let openaiClient: OpenAI | null = null;
 

@@ -1,4 +1,4 @@
-import type { Phase, Context } from './types';
+import type { Phase, Context } from './types.js';
 
 export const USER_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
