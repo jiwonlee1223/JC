@@ -1,11 +1,12 @@
-import { useState, useCallback } from 'react';
-import { Map, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { Map, ChevronLeft, ChevronRight, Undo2, Redo2 } from 'lucide-react';
 import { ScenarioInput } from './components/ScenarioInput';
 import { JourneyMap } from './components/JourneyMap';
 import { JourneyDetails } from './components/JourneyDetails';
 import { StreamingProgress } from './components/StreamingProgress';
 import { updateJourney } from './api/journey';
 import { createJourneyStream } from './api/journey-stream';
+import { useHistory } from './hooks/useHistory';
 import type { Journey, User, Phase, Context, JourneyNode, JourneyEdge, Intersection } from './types/journey';
 
 // 점진적으로 빌드되는 Journey 상태
@@ -28,7 +29,17 @@ interface StreamingState {
 }
 
 function App() {
-  const [journey, setJourney] = useState<Journey | null>(null);
+  // History 관리를 통한 Undo/Redo 지원
+  const {
+    state: journey,
+    set: setJourney,
+    setWithoutHistory,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useHistory<Journey>();
+
   const [partialJourney, setPartialJourney] = useState<PartialJourney | null>(null);
   const [streamingState, setStreamingState] = useState<StreamingState>({
     isStreaming: false,
@@ -40,7 +51,7 @@ function App() {
 
   const handleSubmit = useCallback(async (scenario: string, title?: string) => {
     setError(null);
-    setJourney(null);
+    setWithoutHistory(null); // 새 Journey 생성 시 히스토리 초기화
     setPartialJourney({
       users: [],
       phases: [],
@@ -120,7 +131,7 @@ function App() {
         },
         
         onComplete: (completeJourney) => {
-          setJourney(completeJourney);
+          setWithoutHistory(completeJourney); // 새 Journey는 히스토리 없이 시작
           setPartialJourney(null);
           setStreamingState({
             isStreaming: false,
@@ -146,16 +157,20 @@ function App() {
         currentStep: null,
       });
     }
-  }, []);
+  }, [setWithoutHistory]);
 
-  const handleJourneyUpdate = async (updatedJourney: Journey) => {
+  // Journey 업데이트 (히스토리에 추가됨 - Undo 가능)
+  const handleJourneyUpdate = useCallback(async (updatedJourney: Journey) => {
+    // 먼저 UI 업데이트 (히스토리에 추가)
+    setJourney(updatedJourney);
+    
+    // 백그라운드에서 서버에 저장
     try {
-      const saved = await updateJourney(updatedJourney.id, updatedJourney);
-      setJourney(saved);
+      await updateJourney(updatedJourney.id, updatedJourney);
     } catch (err) {
       console.error('Journey update failed:', err);
     }
-  };
+  }, [setJourney]);
 
   // 현재 표시할 데이터
   const displayData = journey || (partialJourney && {
@@ -169,6 +184,27 @@ function App() {
   } as Journey);
 
   const isLoading = streamingState.isStreaming;
+
+  // 키보드 단축키 (Ctrl+Z, Ctrl+Y)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 입력 필드에서는 무시
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo) undo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        if (canRedo) redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canUndo, canRedo, undo, redo]);
 
   return (
     <div className="h-screen w-screen flex overflow-hidden bg-gray-100">
@@ -233,6 +269,39 @@ function App() {
 
       {/* Main Content - Full Screen React Flow */}
       <main className="flex-1 relative">
+        {/* Undo/Redo 툴바 */}
+        {displayData && !streamingState.isStreaming && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-white rounded-lg shadow-md border border-gray-200 p-1">
+            <button
+              onClick={undo}
+              disabled={!canUndo}
+              className={`
+                p-2 rounded-md transition-colors
+                ${canUndo 
+                  ? 'text-gray-700 hover:bg-gray-100' 
+                  : 'text-gray-300 cursor-not-allowed'}
+              `}
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 className="w-4 h-4" />
+            </button>
+            <div className="w-px h-6 bg-gray-200" />
+            <button
+              onClick={redo}
+              disabled={!canRedo}
+              className={`
+                p-2 rounded-md transition-colors
+                ${canRedo 
+                  ? 'text-gray-700 hover:bg-gray-100' 
+                  : 'text-gray-300 cursor-not-allowed'}
+              `}
+              title="Redo (Ctrl+Y)"
+            >
+              <Redo2 className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {displayData ? (
           <JourneyMap 
             journey={displayData} 

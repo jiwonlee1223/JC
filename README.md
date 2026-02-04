@@ -1,6 +1,5 @@
 # Journey Creator
 
-**사용자 여정 지도 자동화 도구** - User Journey Map Automation Tool
 
 GPT-5.2를 활용하여 간단한 시나리오 텍스트로부터 사용자 여정 지도를 자동으로 생성하고 시각화합니다.
 

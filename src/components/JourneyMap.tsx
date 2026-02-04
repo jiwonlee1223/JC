@@ -7,10 +7,13 @@ import {
   useNodesState,
   useEdgesState,
   addEdge,
+  reconnectEdge,
   type Connection,
   type Edge,
   type Node,
+  type OnReconnect,
   BackgroundVariant,
+  MarkerType,
 } from '@xyflow/react';
 
 import '@xyflow/react/dist/style.css';
@@ -86,6 +89,50 @@ function calculateLayout(phases: Phase[], contexts: Context[]): LayoutInfo {
   return { phasePositions, phaseWidths, contextPositions, contextHeights };
 }
 
+// 위치에서 Phase 인덱스 찾기
+function findPhaseIndex(
+  x: number,
+  phasePositions: number[],
+  phaseWidths: number[]
+): number {
+  // 노드 중심 위치 보정 (노드 너비/2 ≈ 60)
+  const centerX = x + 60;
+  
+  for (let i = 0; i < phasePositions.length; i++) {
+    const start = phasePositions[i];
+    const end = start + phaseWidths[i] + PHASE_PADDING;
+    if (centerX >= start && centerX < end) {
+      return i;
+    }
+  }
+  
+  // 범위 밖이면 가장 가까운 Phase 반환
+  if (centerX < phasePositions[0]) return 0;
+  return phasePositions.length - 1;
+}
+
+// 위치에서 Context 인덱스 찾기
+function findContextIndex(
+  y: number,
+  contextPositions: number[],
+  contextHeights: number[]
+): number {
+  // 노드 중심 위치 보정 (노드 높이/2 ≈ 30)
+  const centerY = y + 30;
+  
+  for (let i = 0; i < contextPositions.length; i++) {
+    const start = contextPositions[i];
+    const end = start + contextHeights[i] + CONTEXT_PADDING;
+    if (centerY >= start && centerY < end) {
+      return i;
+    }
+  }
+  
+  // 범위 밖이면 가장 가까운 Context 반환
+  if (centerY < contextPositions[0]) return 0;
+  return contextPositions.length - 1;
+}
+
 // 원형 배치 위치 계산
 function calculateCircularPosition(
   centerX: number,
@@ -110,6 +157,8 @@ function calculateCircularPosition(
 
 interface UserNodeData extends JourneyNode {
   user?: User;
+  onDelete?: (nodeId: string) => void;
+  onUpdate?: (nodeId: string, updates: Partial<JourneyNode>) => void;
 }
 
 interface JourneyMapProps {
@@ -118,6 +167,47 @@ interface JourneyMapProps {
 }
 
 export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
+  // 노드 삭제 핸들러
+  const handleNodeDelete = useCallback((nodeId: string) => {
+    // 해당 노드와 연결된 엣지도 함께 삭제
+    const updatedNodes = journey.nodes.filter(n => n.id !== nodeId);
+    const updatedEdges = journey.edges.filter(
+      e => e.fromNodeId !== nodeId && e.toNodeId !== nodeId
+    );
+    // Intersection에서도 제거
+    const updatedIntersections = journey.intersections.map(i => ({
+      ...i,
+      nodeIds: i.nodeIds.filter(id => id !== nodeId),
+    })).filter(i => i.nodeIds.length > 0);
+
+    onJourneyUpdate({
+      ...journey,
+      nodes: updatedNodes,
+      edges: updatedEdges,
+      intersections: updatedIntersections,
+    });
+  }, [journey, onJourneyUpdate]);
+
+  // 노드 업데이트 핸들러 (텍스트 편집 등)
+  const handleNodeUpdate = useCallback((nodeId: string, updates: Partial<JourneyNode>) => {
+    const updatedNodes = journey.nodes.map(n =>
+      n.id === nodeId ? { ...n, ...updates } : n
+    );
+
+    onJourneyUpdate({
+      ...journey,
+      nodes: updatedNodes,
+    });
+  }, [journey, onJourneyUpdate]);
+
+  // 엣지 삭제 핸들러
+  const handleEdgeDelete = useCallback((edgeId: string) => {
+    const updatedEdges = journey.edges.filter(e => e.id !== edgeId);
+    onJourneyUpdate({
+      ...journey,
+      edges: updatedEdges,
+    });
+  }, [journey, onJourneyUpdate]);
   // User 맵 생성
   const userMap = useMemo(() => {
     return new Map(journey.users.map(u => [u.id, u]));
@@ -240,23 +330,31 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
         // 노드들을 원형으로 배치
         cellNodes.forEach((jNode, idx) => {
           const user = userMap.get(jNode.userId);
-          const circularPos = calculateCircularPosition(
-            centerX, 
-            centerY, 
-            idx, 
-            nodeCount, 
-            CIRCULAR_RADIUS
-          );
           
-          // 노드 크기 보정 (대략 노드 너비/2)
-          const position = {
-            x: circularPos.x - 60,
-            y: circularPos.y - 30,
-          };
+          // 저장된 위치가 있으면 사용, 없으면 원형 배치 계산
+          let position: { x: number; y: number };
+          if (jNode.position) {
+            position = jNode.position;
+          } else {
+            const circularPos = calculateCircularPosition(
+              centerX, 
+              centerY, 
+              idx, 
+              nodeCount, 
+              CIRCULAR_RADIUS
+            );
+            // 노드 크기 보정 (대략 노드 너비/2)
+            position = {
+              x: circularPos.x - 60,
+              y: circularPos.y - 30,
+            };
+          }
           
           const nodeData: UserNodeData = {
             ...jNode,
             user,
+            onDelete: handleNodeDelete,
+            onUpdate: handleNodeUpdate,
           };
           
           nodes.push({
@@ -280,6 +378,8 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
         const nodeData: UserNodeData = {
           ...jNode,
           user,
+          onDelete: handleNodeDelete,
+          onUpdate: handleNodeUpdate,
         };
         
         nodes.push({
@@ -293,7 +393,7 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
     });
 
     return nodes;
-  }, [journey.phases, journey.contexts, journey.intersections, cellGroups, intersectionCells, userMap, layout]);
+  }, [journey.phases, journey.contexts, journey.intersections, cellGroups, intersectionCells, userMap, layout, handleNodeDelete, handleNodeUpdate]);
 
   // Edge를 ReactFlow Edge로 변환
   const buildEdges = useCallback((): Edge[] => {
@@ -310,6 +410,7 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
         label: jEdge.description,
         type: 'default',  // Bezier 곡선
         animated: true,
+        reconnectable: true, // 엣지 재연결 허용
         style: { 
           stroke: edgeColor, 
           strokeWidth: 2,
@@ -319,6 +420,10 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
         labelBgStyle: { fill: 'white', fillOpacity: 0.8 },
         labelBgPadding: [4, 2] as [number, number],
         labelBgBorderRadius: 4,
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: edgeColor,
+        },
       };
     });
   }, [journey.edges, journey.nodes, userMap]);
@@ -335,37 +440,147 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
   // 새 연결 생성
   const onConnect = useCallback(
     (params: Connection) => {
-      setEdges((eds) => addEdge({
-        ...params,
-        type: 'default',  // Bezier 곡선
-        animated: true,
-        style: { 
-          stroke: '#6b7280', 
-          strokeWidth: 2,
-          strokeLinecap: 'round',
-        },
-      }, eds));
+      if (!params.source || !params.target) return;
+      
+      // 새 엣지 ID 생성
+      const newEdgeId = `edge-${Date.now()}`;
+      
+      // Journey에 새 엣지 추가
+      const newJourneyEdge = {
+        id: newEdgeId,
+        fromNodeId: params.source,
+        toNodeId: params.target,
+        description: '',
+      };
+      
+      onJourneyUpdate({
+        ...journey,
+        edges: [...journey.edges, newJourneyEdge],
+      });
     },
-    [setEdges]
+    [journey, onJourneyUpdate]
   );
 
-  // 노드 드래그 종료 시 위치 업데이트
+  // 엣지 재연결
+  const onReconnect: OnReconnect = useCallback(
+    (oldEdge, newConnection) => {
+      if (!newConnection.source || !newConnection.target) return;
+      
+      // Journey에서 엣지 업데이트
+      const updatedEdges = journey.edges.map(e =>
+        e.id === oldEdge.id
+          ? { ...e, fromNodeId: newConnection.source!, toNodeId: newConnection.target! }
+          : e
+      );
+      
+      onJourneyUpdate({
+        ...journey,
+        edges: updatedEdges,
+      });
+    },
+    [journey, onJourneyUpdate]
+  );
+
+  // 엣지 클릭 시 삭제 (더블클릭)
+  const onEdgeDoubleClick = useCallback(
+    (_event: React.MouseEvent, edge: Edge) => {
+      if (confirm('Delete this connector?')) {
+        handleEdgeDelete(edge.id);
+      }
+    },
+    [handleEdgeDelete]
+  );
+
+  // 노드 삭제 (Delete 키)
+  const onNodesDelete = useCallback(
+    (deletedNodes: Node[]) => {
+      deletedNodes.forEach(node => {
+        if (node.id.startsWith('node-')) {
+          handleNodeDelete(node.id);
+        }
+      });
+    },
+    [handleNodeDelete]
+  );
+
+  // 엣지 삭제 (Delete 키)
+  const onEdgesDelete = useCallback(
+    (deletedEdges: Edge[]) => {
+      const deletedIds = new Set(deletedEdges.map(e => e.id));
+      const updatedEdges = journey.edges.filter(e => !deletedIds.has(e.id));
+      
+      onJourneyUpdate({
+        ...journey,
+        edges: updatedEdges,
+      });
+    },
+    [journey, onJourneyUpdate]
+  );
+
+  // 노드 드래그 종료 시 위치, Phase/Context, Intersection 업데이트
   const onNodeDragStop = useCallback(
     (_event: React.MouseEvent, node: Node) => {
-      if (!node.id.startsWith('node-')) return;
+      // userNode 타입만 처리 (레이블, intersection 제외)
+      if (node.type !== 'userNode') return;
 
+      // 해당 노드가 journey.nodes에 있는지 확인
+      const existingNode = journey.nodes.find(n => n.id === node.id);
+      if (!existingNode) return;
+
+      // 새 위치에서 Phase/Context 인덱스 계산
+      const newPhaseIdx = findPhaseIndex(node.position.x, layout.phasePositions, layout.phaseWidths);
+      const newContextIdx = findContextIndex(node.position.y, layout.contextPositions, layout.contextHeights);
+      
+      // 새 phaseId, contextId 생성
+      const newPhaseId = journey.phases[newPhaseIdx]?.id || existingNode.phaseId;
+      const newContextId = journey.contexts[newContextIdx]?.id || existingNode.contextId;
+
+      // 노드 업데이트 (위치 + Phase/Context)
       const updatedNodes = journey.nodes.map((jNode) =>
         jNode.id === node.id
-          ? { ...jNode, position: { x: node.position.x, y: node.position.y } }
+          ? { 
+              ...jNode, 
+              position: { x: Math.round(node.position.x), y: Math.round(node.position.y) },
+              phaseId: newPhaseId,
+              contextId: newContextId,
+            }
           : jNode
       );
+
+      // Intersection 재계산
+      const cellNodeMap = new Map<string, { phaseId: string; contextId: string; nodeIds: string[] }>();
+      updatedNodes.forEach((jNode) => {
+        const cellKey = `${jNode.phaseId}::${jNode.contextId}`; // :: 구분자 사용
+        if (!cellNodeMap.has(cellKey)) {
+          cellNodeMap.set(cellKey, { phaseId: jNode.phaseId, contextId: jNode.contextId, nodeIds: [] });
+        }
+        cellNodeMap.get(cellKey)!.nodeIds.push(jNode.id);
+      });
+
+      // 2개 이상의 노드가 있는 셀에 Intersection 생성
+      const updatedIntersections = Array.from(cellNodeMap.values())
+        .filter((cell) => cell.nodeIds.length >= 2)
+        .map((cell) => {
+          // 기존 Intersection 찾기
+          const existingIntersection = journey.intersections.find(
+            i => i.phaseId === cell.phaseId && i.contextId === cell.contextId
+          );
+          return {
+            id: existingIntersection?.id || `intersection-${cell.phaseId}-${cell.contextId}`,
+            phaseId: cell.phaseId,
+            contextId: cell.contextId,
+            nodeIds: cell.nodeIds,
+            description: existingIntersection?.description,
+          };
+        });
 
       onJourneyUpdate({
         ...journey,
         nodes: updatedNodes,
+        intersections: updatedIntersections,
       });
     },
-    [journey, onJourneyUpdate]
+    [journey, onJourneyUpdate, layout]
   );
 
   // MiniMap 노드 색상
@@ -386,8 +601,13 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onReconnect={onReconnect}
         onNodeDragStop={onNodeDragStop}
+        onNodesDelete={onNodesDelete}
+        onEdgesDelete={onEdgesDelete}
+        onEdgeDoubleClick={onEdgeDoubleClick}
         nodeTypes={nodeTypes}
+        deleteKeyCode={['Backspace', 'Delete']}
         fitView
         fitViewOptions={{ padding: 0.2 }}
         minZoom={0.2}
