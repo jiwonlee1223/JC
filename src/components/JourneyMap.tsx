@@ -213,6 +213,29 @@ function JourneyMapInner({ journey, onJourneyUpdate, selectedItem, onClearSelect
       connectors: updatedConnectors,
     });
   }, [journey, onJourneyUpdate]);
+
+  // Phase 업데이트 핸들러
+  const handlePhaseUpdate = useCallback((phaseId: string, updates: { name?: string; duration?: string }) => {
+    const updatedPhases = journey.phases.map(p =>
+      p.id === phaseId ? { ...p, ...updates } : p
+    );
+    onJourneyUpdate({
+      ...journey,
+      phases: updatedPhases,
+    });
+  }, [journey, onJourneyUpdate]);
+
+  // Context 업데이트 핸들러
+  const handleContextUpdate = useCallback((contextId: string, updates: { name?: string; description?: string }) => {
+    const updatedContexts = journey.contexts.map(c =>
+      c.id === contextId ? { ...c, ...updates } : c
+    );
+    onJourneyUpdate({
+      ...journey,
+      contexts: updatedContexts,
+    });
+  }, [journey, onJourneyUpdate]);
+
   // User 맵 생성
   const userMap = useMemo(() => {
     return new Map(journey.users.map(u => [u.id, u]));
@@ -265,9 +288,14 @@ function JourneyMapInner({ journey, onJourneyUpdate, selectedItem, onClearSelect
         id: `phase-label-${phase.id}`,
         type: 'phaseLabel',
         position: { x: x + 40, y: 20 },
-        data: { name: phase.name, duration: phase.duration },
+        data: { 
+          name: phase.name, 
+          duration: phase.duration,
+          phaseId: phase.id,
+          onUpdate: handlePhaseUpdate,
+        },
         draggable: false,
-        selectable: false,
+        selectable: true,
       });
     });
 
@@ -281,10 +309,12 @@ function JourneyMapInner({ journey, onJourneyUpdate, selectedItem, onClearSelect
         data: { 
           name: context.name, 
           description: context.description,
-          color: '#6b7280'
+          color: '#6b7280',
+          contextId: context.id,
+          onUpdate: handleContextUpdate,
         },
         draggable: false,
-        selectable: false,
+        selectable: true,
       });
     });
 
@@ -398,7 +428,7 @@ function JourneyMapInner({ journey, onJourneyUpdate, selectedItem, onClearSelect
     });
 
     return nodes;
-  }, [journey.phases, journey.contexts, journey.intersections, cellGroups, intersectionCells, userMap, layout, handleNodeDelete, handleNodeUpdate]);
+  }, [journey.phases, journey.contexts, journey.intersections, cellGroups, intersectionCells, userMap, layout, handleNodeDelete, handleNodeUpdate, handlePhaseUpdate, handleContextUpdate]);
 
   // Connector를 ReactFlow 형식으로 변환
   const buildConnectors = useCallback((): Edge[] => {
