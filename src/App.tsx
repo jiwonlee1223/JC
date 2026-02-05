@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { Map, ChevronLeft, ChevronRight, LogIn, LogOut, User as UserIcon } from 'lucide-react';
 import { ScenarioInput } from './components/ScenarioInput';
 import { JourneyMap } from './components/JourneyMap';
-import { JourneyDetails } from './components/JourneyDetails';
+import { JourneyDetails, type SelectedItem } from './components/JourneyDetails';
 import { StreamingProgress } from './components/StreamingProgress';
 import { AuthModal } from './components/AuthModal';
 import { JourneyToolbar } from './components/JourneyToolbar';
@@ -50,6 +50,7 @@ function App() {
   } = useHistory<Journey>();
 
   const [partialJourney, setPartialJourney] = useState<PartialJourney | null>(null);
+  const [selectedItem, setSelectedItem] = useState<SelectedItem>(null);
   const [streamingState, setStreamingState] = useState<StreamingState>({
     isStreaming: false,
     completedSteps: [],
@@ -343,7 +344,12 @@ function App() {
             )}
 
             {/* Journey Details */}
-            {journey && <JourneyDetails journey={journey} />}
+            {journey && (
+              <JourneyDetails 
+                journey={journey} 
+                onItemSelect={setSelectedItem}
+              />
+            )}
           </div>
         </div>
       </aside>
@@ -382,7 +388,9 @@ function App() {
         {displayData ? (
           <JourneyMap 
             journey={displayData} 
-            onJourneyUpdate={handleJourneyUpdate} 
+            onJourneyUpdate={handleJourneyUpdate}
+            selectedItem={selectedItem}
+            onClearSelection={() => setSelectedItem(null)}
           />
         ) : (
           <div className="h-full flex items-center justify-center bg-gray-50">

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useEffect } from 'react';
+import { useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -6,6 +6,8 @@ import {
   MiniMap,
   useNodesState,
   useEdgesState,
+  useReactFlow,
+  ReactFlowProvider,
   type Connection,
   type Edge,
   type Node,
@@ -13,6 +15,7 @@ import {
   BackgroundVariant,
   MarkerType,
 } from '@xyflow/react';
+import type { SelectedItem } from './JourneyDetails';
 
 import '@xyflow/react/dist/style.css';
 
@@ -162,9 +165,13 @@ interface UserNodeData extends JourneyNode {
 interface JourneyMapProps {
   journey: Journey;
   onJourneyUpdate: (journey: Journey) => void;
+  selectedItem?: SelectedItem;
+  onClearSelection?: () => void;
 }
 
-export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
+// Inner component that uses useReactFlow
+function JourneyMapInner({ journey, onJourneyUpdate, selectedItem, onClearSelection }: JourneyMapProps) {
+  const { fitView } = useReactFlow();
   // 노드 삭제 핸들러
   const handleNodeDelete = useCallback((nodeId: string) => {
     // 해당 노드와 연결된 Connector도 함께 삭제
@@ -435,6 +442,106 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
     setRfConnectors(buildConnectors());
   }, [journey, buildNodes, buildConnectors, setNodes, setRfConnectors]);
 
+  // 선택된 항목에 해당하는 노드 ID들 계산
+  const highlightedNodeIds = useMemo(() => {
+    if (!selectedItem) return null;
+    
+    const ids = new Set<string>();
+    
+    switch (selectedItem.type) {
+      case 'user':
+        // 해당 User의 모든 노드
+        journey.nodes
+          .filter(n => n.userId === selectedItem.id)
+          .forEach(n => ids.add(n.id));
+        break;
+      case 'phase':
+        // 해당 Phase의 모든 노드
+        journey.nodes
+          .filter(n => n.phaseId === selectedItem.id)
+          .forEach(n => ids.add(n.id));
+        // Phase 레이블도 포함
+        ids.add(`phase-label-${selectedItem.id}`);
+        break;
+      case 'context':
+        // 해당 Context의 모든 노드
+        journey.nodes
+          .filter(n => n.contextId === selectedItem.id)
+          .forEach(n => ids.add(n.id));
+        // Context 레이블도 포함
+        ids.add(`context-label-${selectedItem.id}`);
+        break;
+      case 'node':
+        // 단일 노드
+        ids.add(selectedItem.id);
+        break;
+    }
+    
+    return ids.size > 0 ? ids : null;
+  }, [selectedItem, journey.nodes]);
+
+  // 선택된 항목이 변경되면 해당 노드로 이동
+  const prevSelectedItem = useRef<SelectedItem>(null);
+  useEffect(() => {
+    if (!selectedItem || !highlightedNodeIds || highlightedNodeIds.size === 0) return;
+    
+    // 같은 선택이면 무시
+    if (
+      prevSelectedItem.current?.type === selectedItem.type &&
+      prevSelectedItem.current?.id === selectedItem.id
+    ) {
+      return;
+    }
+    prevSelectedItem.current = selectedItem;
+    
+    // 약간의 딜레이 후 fitView 실행 (노드가 렌더링될 시간 확보)
+    const timeoutId = setTimeout(() => {
+      const nodeIds = Array.from(highlightedNodeIds);
+      fitView({
+        nodes: nodeIds.map(id => ({ id })),
+        padding: 0.3,
+        duration: 500,
+      });
+    }, 100);
+    
+    return () => clearTimeout(timeoutId);
+  }, [selectedItem, highlightedNodeIds, fitView]);
+
+  // 노드에 하이라이트 스타일 적용
+  useEffect(() => {
+    if (!highlightedNodeIds) {
+      // 선택 해제: 모든 노드 원래대로
+      setNodes(nds => nds.map(n => ({
+        ...n,
+        style: { ...n.style, opacity: 1, filter: undefined },
+        className: n.className?.replace(' ring-2 ring-blue-500 ring-offset-2', '') || '',
+      })));
+      return;
+    }
+    
+    // 선택된 노드 하이라이트, 나머지는 흐리게
+    setNodes(nds => nds.map(n => {
+      const isHighlighted = highlightedNodeIds.has(n.id);
+      return {
+        ...n,
+        style: { 
+          ...n.style, 
+          opacity: isHighlighted ? 1 : 0.3,
+          filter: isHighlighted ? undefined : 'grayscale(50%)',
+          transition: 'opacity 0.3s, filter 0.3s',
+        },
+        className: isHighlighted 
+          ? (n.className || '') + ' ring-2 ring-blue-500 ring-offset-2'
+          : n.className?.replace(' ring-2 ring-blue-500 ring-offset-2', '') || '',
+      };
+    }));
+  }, [highlightedNodeIds, setNodes]);
+
+  // 캔버스 클릭 시 선택 해제
+  const onPaneClick = useCallback(() => {
+    onClearSelection?.();
+  }, [onClearSelection]);
+
   // 새 연결 생성
   const onConnect = useCallback(
     (params: Connection) => {
@@ -604,6 +711,7 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
         onNodesDelete={onNodesDelete}
         onEdgesDelete={onConnectorsDelete}
         onEdgeDoubleClick={onConnectorDoubleClick}
+        onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         deleteKeyCode={['Backspace', 'Delete']}
         fitView
@@ -620,5 +728,14 @@ export function JourneyMap({ journey, onJourneyUpdate }: JourneyMapProps) {
         />
       </ReactFlow>
     </div>
+  );
+}
+
+// Wrapper component with ReactFlowProvider
+export function JourneyMap(props: JourneyMapProps) {
+  return (
+    <ReactFlowProvider>
+      <JourneyMapInner {...props} />
+    </ReactFlowProvider>
   );
 }
